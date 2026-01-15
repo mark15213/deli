@@ -3,7 +3,7 @@
 # Web Framework
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
-pydantic>=2.5.0
+pydantic[email]>=2.5.0
 pydantic-settings>=2.1.0
 
 # Database
@@ -24,7 +24,7 @@ cryptography>=42.0.0
 httpx>=0.27.0
 
 # FSRS Algorithm
-py-fsrs>=3.0.0
+fsrs>=3.0.0
 
 # AI & LLM
 langchain>=0.1.0
