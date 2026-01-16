@@ -1,10 +1,13 @@
-# API routes for authentication
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 
 from app.core.config import get_settings
-from app.core.security import create_access_token, encrypt_token
+from app.core.database import get_db
+from app.core.security import create_access_token
+from app.services.auth_service import AuthService
+from app.services.notion_service import NotionService
 
 settings = get_settings()
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -13,53 +16,27 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.get("/notion/login")
 async def notion_login():
     """Redirect to Notion OAuth page."""
-    auth_url = (
-        f"https://api.notion.com/v1/oauth/authorize"
-        f"?client_id={settings.notion_client_id}"
-        f"&response_type=code"
-        f"&owner=user"
-        f"&redirect_uri={settings.notion_redirect_uri}"
-    )
+    auth_url = NotionService.get_auth_url()
     return RedirectResponse(url=auth_url)
 
 
 @router.get("/notion/callback")
 async def notion_callback(
     code: str = Query(..., description="Authorization code from Notion"),
-    state: str = Query(None),
+    db: AsyncSession = Depends(get_db),
 ):
     """Handle Notion OAuth callback."""
-    # Exchange code for access token
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.notion.com/v1/oauth/token",
-            auth=(settings.notion_client_id, settings.notion_client_secret),
-            json={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": settings.notion_redirect_uri,
-            },
-        )
+    # Authenticate via Notion and get/create User
+    user = await AuthService.authenticate_notion_user(db, code)
     
-    if response.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to exchange code for token")
-    
-    token_data = response.json()
-    access_token = token_data.get("access_token")
-    workspace_id = token_data.get("workspace_id")
-    
-    # TODO: 
-    # 1. Create or update user in database
-    # 2. Store encrypted Notion token
-    # 3. Return JWT token to client
-    
-    # For now, return a placeholder response
-    jwt_token = create_access_token(subject="user_id_placeholder")
+    # Create JWT Access Token
+    access_token = create_access_token(subject=user.id)
     
     return {
-        "access_token": jwt_token,
+        "access_token": access_token,
         "token_type": "bearer",
-        "workspace_id": workspace_id,
+        "user_id": user.id,
+        "email": user.email,
     }
 
 
