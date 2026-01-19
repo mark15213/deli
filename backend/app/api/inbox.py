@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas import InboxItem, InboxAction
+from app.api.deps import get_current_user
+from app.models import User
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
 
@@ -15,6 +17,7 @@ async def get_pending_items(
     skip: int = 0,
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get pending items in inbox."""
     # TODO: Implement inbox retrieval
@@ -25,6 +28,7 @@ async def get_pending_items(
 async def approve_item(
     quiz_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Approve an inbox item."""
     # TODO: Implement approval logic
@@ -35,6 +39,7 @@ async def approve_item(
 async def reject_item(
     quiz_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Reject an inbox item."""
     # TODO: Implement rejection logic
@@ -45,6 +50,7 @@ async def reject_item(
 async def update_item(
     quiz_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Edit an inbox item."""
     # TODO: Implement edit logic

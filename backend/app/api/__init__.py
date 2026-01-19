@@ -5,6 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.quizzes import router as quizzes_router
 from app.api.inbox import router as inbox_router
 from app.api.stats import router as stats_router
+from app.api.deps import get_current_user, get_current_active_user
 
 api_router = APIRouter(prefix="/api/v1")
 
