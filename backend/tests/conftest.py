@@ -12,7 +12,7 @@ from app.main import app
 from app.core.database import Base, get_db
 from app.core.config import get_settings
 from app.core.security import create_access_token
-from app.models import User
+from app.models import User, NotionConnection, Quiz, ReviewRecord
 
 
 # Test database URL (use separate test database)

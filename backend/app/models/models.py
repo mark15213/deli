@@ -39,9 +39,9 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    notion_connections: Mapped[list["NotionConnection"]] = relationship(back_populates="user")
-    quizzes: Mapped[list["Quiz"]] = relationship(back_populates="user")
-    review_records: Mapped[list["ReviewRecord"]] = relationship(back_populates="user")
+    notion_connections: Mapped[list["NotionConnection"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    quizzes: Mapped[list["Quiz"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    review_records: Mapped[list["ReviewRecord"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class NotionConnection(Base):
