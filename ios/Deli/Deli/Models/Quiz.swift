@@ -4,7 +4,6 @@ enum QuizType: String, Codable {
     case mcq
     case trueFalse = "true_false"
     case cloze
-    case codeOutput = "code_output"
 }
 
 enum QuizStatus: String, Codable {

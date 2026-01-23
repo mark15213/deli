@@ -52,6 +52,26 @@ class ReviewViewModel {
                 explanation: "A Primary Key is a unique identifier for each record in a database table.",
                 sourcePageTitle: "Database Basics",
                 tags: ["SQL", "Database"]
+            ),
+            Quiz(
+                id: UUID(),
+                type: .trueFalse,
+                question: "Swift is a statically typed language.",
+                options: nil, // Options handled by trueFalseView
+                answer: "True",
+                explanation: "Swift performs type checks at compile time.",
+                sourcePageTitle: "Swift Basics",
+                tags: ["Swift"]
+            ),
+            Quiz(
+                id: UUID(),
+                type: .cloze,
+                question: "The capital of France is {{c1::Paris}}.",
+                options: nil,
+                answer: "Paris",
+                explanation: "Paris is the capital and most populous city of France.",
+                sourcePageTitle: "Geography",
+                tags: ["General"]
             )
         ]
     }
