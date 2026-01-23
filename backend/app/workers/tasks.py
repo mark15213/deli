@@ -7,6 +7,7 @@ from asgiref.sync import async_to_sync
 from app.core.celery_app import celery_app
 from app.core.database import async_session_maker
 from app.services.ingestion_service import IngestionService
+from app.services.generator_service import GeneratorService
 from app.models import NotionConnection
 from app.models import Quiz, QuizStatus, QuizType
 
@@ -32,24 +33,20 @@ async def run_sync_logic(connection_id: str):
         ingestion = IngestionService(session)
         chunks = await ingestion.sync_connection(connection)
         
-        # 3. Process Chunks --> Generate Pending Quizzes (Placeholder for F1.5)
-        # For now, we just log or create a placeholder quiz for testing
-        print(f"Synced {len(chunks)} chunks from connection {connection_id}")
+        # 3. Process Chunks --> Generate Pending Quizzes
+        generator = GeneratorService(session)
         
         for chunk in chunks:
-            # Placeholder: Create a dummy quiz to verify flow
-            # Real implementation in F1.5 will call LLM here
-            quiz = Quiz(
-                user_id=connection.user_id,
-                type=QuizType.MCQ,
-                question=f"Placeholder Question for: {chunk['source']['page_title']}",
-                options=["A", "B", "C"],
-                answer="A",
-                explanation=f"Generated from chunk index {chunk['source']['chunk_index']}",
-                status=QuizStatus.PENDING,
-                source_page_id=chunk['source']['page_id'],
-                source_page_title=chunk['source']['page_title'],
-            )
-            session.add(quiz)
+            # Generate quizzes for each chunk (F1.5 core)
+            # Metadata: user_id, page_id, page_title already in chunk source/metadata
+            
+            source_meta = {
+                "user_id": str(connection.user_id),
+                "page_id": chunk["source"]["page_id"],
+                "page_title": chunk["source"]["page_title"]
+            }
+            
+            await generator.generate_quizzes_from_chunk(chunk["text"], source_meta)
         
-        await session.commit()
+        # Note: GeneratorService commits internally, but session management here ensures cleanliness.
+        # Ideally we commit once per task or chunk. GeneratorService does commit.

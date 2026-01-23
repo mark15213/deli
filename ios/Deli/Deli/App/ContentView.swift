@@ -31,28 +31,15 @@ struct ContentView: View {
 // MARK: - Placeholder Views
 
 struct ReviewView: View {
+    @State private var viewModel = ReviewViewModel()
+    
     var body: some View {
         NavigationStack {
-            VStack {
-                Text("Today's Review")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                // TODO: Implement CardStackView with swipe gestures
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.blue.opacity(0.1))
-                    .frame(height: 400)
-                    .overlay(
-                        Text("Swipe cards here")
-                            .foregroundColor(.secondary)
-                    )
-                    .padding()
-                
-                Spacer()
-            }
-            .navigationTitle("Deli")
+            CardStackView(viewModel: viewModel)
+                .navigationTitle("Deli")
+                #if !os(macOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
         }
     }
 }

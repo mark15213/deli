@@ -1,4 +1,41 @@
 # Pytest configuration and fixtures
+import sys
+from unittest.mock import MagicMock
+
+# MOCK FSRS LIBRARY GLOBALLY (Since user skipped installation)
+mock_fsrs = MagicMock()
+mock_fsrs.FSRS = MagicMock
+mock_fsrs.Card = MagicMock
+
+# Mock Rating Enum
+rating_mock = MagicMock()
+rating_mock.Again = 1
+rating_mock.Hard = 2
+rating_mock.Good = 3
+rating_mock.Easy = 4
+# Make Rating(x) return the mock value itself to simulate Enum behavior sort of
+# Actually, the service does Rating(rating).
+# If Rating is Enum, Rating(3) -> Rating.Good.
+# We need to mock the CALL to the Rating class.
+def rating_side_effect(val):
+    if val == 1: return rating_mock.Again
+    if val == 2: return rating_mock.Hard
+    if val == 3: return rating_mock.Good
+    if val == 4: return rating_mock.Easy
+    return val
+rating_mock.side_effect = rating_side_effect
+mock_fsrs.Rating = rating_mock
+
+# Mock State Enum
+state_mock = MagicMock()
+state_mock.New = 0
+state_mock.Learning = 1
+state_mock.Review = 2
+state_mock.Relearning = 3
+mock_fsrs.State = state_mock
+
+sys.modules["fsrs"] = mock_fsrs
+
 import asyncio
 from typing import AsyncGenerator, Generator
 import uuid

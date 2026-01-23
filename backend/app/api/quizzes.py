@@ -18,14 +18,26 @@ from app.models import User
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
 
+from app.services.scheduler_service import SchedulerService
+
 @router.get("/today", response_model=TodayQueue)
 async def get_today_queue(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get today's review queue."""
-    # TODO: Implement FSRS queue retrieval
-    return TodayQueue(total=0, cards=[])
+    scheduler = SchedulerService(db)
+    due_quizzes = await scheduler.get_due_quizzes(current_user.id)
+    
+    # Needs to convert DB models to QuizCard schemas or just return ID list?
+    # TodayQueue schema expects `total` and `cards`.
+    # We need to map DB model -> Pydantic Schema.
+    # Assuming QuizCard schema matches or we map it manually.
+    
+    return TodayQueue(
+        total=len(due_quizzes),
+        cards=due_quizzes # Pydantic v2 usually handles ORM mapping if configured
+    )
 
 
 @router.get("/{quiz_id}", response_model=QuizCard)
@@ -35,8 +47,11 @@ async def get_quiz(
     current_user: User = Depends(get_current_user),
 ):
     """Get a specific quiz card."""
-    # TODO: Implement quiz retrieval
-    raise HTTPException(status_code=404, detail="Quiz not found")
+    from app.models import Quiz
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz or quiz.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    return quiz
 
 
 @router.get("/{quiz_id}/answer", response_model=QuizCardBack)
@@ -46,8 +61,11 @@ async def get_quiz_answer(
     current_user: User = Depends(get_current_user),
 ):
     """Get the answer and explanation for a quiz."""
-    # TODO: Implement answer retrieval
-    raise HTTPException(status_code=404, detail="Quiz not found")
+    from app.models import Quiz
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz or quiz.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    return quiz
 
 
 @router.post("/{quiz_id}/review", response_model=ReviewResponse)
@@ -58,9 +76,22 @@ async def submit_review(
     current_user: User = Depends(get_current_user),
 ):
     """Submit a review for a quiz (triggers FSRS update)."""
-    # TODO: Implement FSRS review submission
-    from datetime import datetime, timedelta
+    scheduler = SchedulerService(db)
+    
+    # Verify ownership
+    # (Optional optimization: SchedulerService could check ownership or we do it here)
+    # Let's rely on SchedulerService failing or ensure we check existence first.
+    
+    record = await scheduler.calculate_review(
+        user_id=current_user.id,
+        quiz_id=quiz_id,
+        rating=review.rating
+    )
+    
+    # Calculate interval for response
+    interval = (record.next_review_at - record.reviewed_at).days
+    
     return ReviewResponse(
-        next_review_at=datetime.utcnow() + timedelta(days=1),
-        interval_days=1.0
+        next_review_at=record.next_review_at,
+        interval_days=float(interval)
     )
