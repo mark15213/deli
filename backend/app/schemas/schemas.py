@@ -2,19 +2,16 @@
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
+from typing import Any, List, Optional, Dict
 
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, model_validator
 
 
 # --- Enums ---
-class QuizType(str, Enum):
+class CardType(str, Enum):
     MCQ = "mcq"
-    TRUE_FALSE = "true_false"
     CLOZE = "cloze"
-    CODE_OUTPUT = "code_output"
-    SPOT_BUG = "spot_bug"
-    REORDER = "reorder"
-    FLASHCARD = "flashcard"
+    CODE = "code"
 
 
 class Rating(int, Enum):
@@ -22,6 +19,13 @@ class Rating(int, Enum):
     HARD = 2
     GOOD = 3
     EASY = 4
+
+
+class CardStatus(str, Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
 
 
 # --- User Schemas ---
@@ -41,57 +45,68 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
-# --- Quiz Schemas ---
-class QuizSource(BaseModel):
-    page_id: str | None = None
-    block_id: str | None = None
-    page_title: str | None = None
-    deep_link: str | None = None
+# --- Card/Quiz Schemas ---
 
-
-class QuizBase(BaseModel):
-    type: QuizType
+class QuizCard(BaseModel):
+    """Card definition for Review UI."""
+    id: UUID
+    type: str # 'mcq', etc.
     question: str
     options: list[str] | None = None
-    answer: str
-    explanation: str | None = None
-    tags: list[str] = Field(default_factory=list)
-    difficulty: str | None = None
+    tags: list[str] = []
+    
+    # We might map source_title if we want, but let's keep it simple
+    # content is JSONB in DB. We flatten it here.
 
-
-class QuizCreate(QuizBase):
-    source: QuizSource | None = None
-
-
-class QuizResponse(QuizBase):
-    id: UUID
-    source: QuizSource | None = None
-    created_at: datetime
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_card(cls, data: Any) -> Any:
+        # Check if data is an ORM object (has 'content' attribute)
+        if hasattr(data, "content") and isinstance(data.content, dict):
+            content = data.content
+            # Create a dict from the object to modify it
+            return {
+                "id": data.id,
+                "type": data.type,
+                "question": content.get("question"),
+                "options": content.get("options"),
+                "tags": data.tags or [],
+            }
+        return data
 
     class Config:
         from_attributes = True
 
 
-class QuizCard(BaseModel):
-    """Quiz card for review UI."""
-    id: UUID
-    type: QuizType
-    question: str
-    options: list[str] | None = None
-    tags: list[str] = []
-    source_title: str | None = None
-
-
 class QuizCardBack(BaseModel):
-    """Back of quiz card with answer and explanation."""
+    """Back of card."""
     answer: str
     explanation: str | None = None
     deep_link: str | None = None
+    
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_back(cls, data: Any) -> Any:
+        if hasattr(data, "content") and isinstance(data.content, dict):
+            content = data.content
+            # Try to get deep link from source_material if not on card?
+            # data.source_material.external_url ?
+            # For now just content
+            return {
+                "answer": content.get("answer"),
+                "explanation": content.get("explanation"),
+                # "deep_link": ...
+            }
+        return data
+
+    class Config:
+        from_attributes = True
 
 
 # --- Review Schemas ---
 class ReviewSubmit(BaseModel):
-    quiz_id: UUID
+    # quiz_id in URL, usually not needed in body but kept for compat
+    # The API endpoint takes `rating` inside `review` body.
     rating: Rating
 
 
@@ -115,13 +130,40 @@ class DashboardStats(BaseModel):
 
 
 # --- Inbox ---
-class InboxItem(BaseModel):
-    id: UUID
-    quiz: QuizResponse
-    created_at: datetime
+# InboxItem previously wrapped QuizResponse.
+# Now it should wrap Card.
+# Let's reuse QuizCard for content preview? Or similar.
 
+class InboxCard(BaseModel):
+    id: UUID
+    type: str
+    question: str
+    options: List[str] | None = None
+    tags: List[str] = []
+    created_at: datetime
+    
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_inbox(cls, data: Any) -> Any:
+        if hasattr(data, "content") and isinstance(data.content, dict):
+            content = data.content
+            return {
+                "id": data.id,
+                "type": data.type,
+                "question": content.get("question"),
+                "options": content.get("options"),
+                "tags": data.tags or [],
+                "created_at": data.created_at
+            }
+        return data
+        
     class Config:
         from_attributes = True
+
+
+class InboxItem(InboxCard):
+    # Backward compat alias or just use InboxCard
+    pass
 
 
 class InboxAction(str, Enum):

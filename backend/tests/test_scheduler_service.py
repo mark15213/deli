@@ -6,61 +6,81 @@ from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 
 from app.services.scheduler_service import SchedulerService
-from app.models import Quiz, QuizStatus, ReviewRecord, QuizType
+from app.models import Card, CardStatus, StudyProgress, ReviewLog, Deck
 
 @pytest_asyncio.fixture
-async def test_quiz(db_session, test_user):
-    quiz = Quiz(
+async def test_deck(db_session, test_user):
+    deck = Deck(id=uuid4(), owner_id=test_user.id, title="Test Deck")
+    db_session.add(deck)
+    await db_session.commit()
+    return deck
+
+@pytest_asyncio.fixture
+async def test_card(db_session, test_user, test_deck):
+    card = Card(
+        id=uuid4(),
+        deck_id=test_deck.id,
+        type="mcq",
+        content={"question": "Q", "answer": "A"},
+        status=CardStatus.ACTIVE
+    )
+    db_session.add(card)
+    
+    # Also create a default StudyProgress for it? 
+    # Or test assumes new card has no progress.
+    # Service implementation: get_due_cards queries StudyProgress table.
+    
+    # If we want it to be "Due", and implementation requires StudyProgress to exist:
+    # Service implementation says: "If we want NEW cards... tricky... Improved approach: Query StudyProgress directly".
+    # And "Fetch cards with StudyProgress where due_date <= now".
+    # So if there is no StudyProgress, it might not be returned depending on implementation.
+    # Let's check service logic: "select(StudyProgress)..."
+    # So yes, card must have progress to be "started".
+    # Or we need a way to fetch "New" cards.
+    # For this test, let's assume we test "Due Review" scenario.
+    
+    progress = StudyProgress(
         id=uuid4(),
         user_id=test_user.id,
-        type=QuizType.MCQ,
-        question="Test Q",
-        options=["A"],
-        answer="A",
-        status=QuizStatus.APPROVED
+        card_id=card.id,
+        due_date=datetime.now(timezone.utc) - timedelta(days=1), # Yesterday, so it is due
+        state="new"
     )
-    db_session.add(quiz)
+    db_session.add(progress)
     await db_session.commit()
-    return quiz
+    
+    return card
 
 @pytest.mark.asyncio
-async def test_get_due_quizzes(db_session, test_user, test_quiz):
-    """Test fetching due quizzes."""
+async def test_get_due_cards(db_session, test_user, test_card):
+    """Test fetching due cards."""
     service = SchedulerService(db_session)
     
-    # New quiz should be due
-    due = await service.get_due_quizzes(test_user.id)
+    # Card is set to be due yesterday
+    due = await service.get_due_cards(test_user.id)
     assert len(due) == 1
-    assert due[0].id == test_quiz.id
+    assert due[0].id == test_card.id
     
-    # Quiz reviewed just now extending into future should NOT be due
-    # Use naive datetime (utcnow) to match model defaults
-    now_utc = datetime.utcnow()
-    future_date = now_utc + timedelta(days=1)
-    
-    # Needs a previous review record
-    record = ReviewRecord(
-        id=uuid4(),
-        quiz_id=test_quiz.id,
-        user_id=test_user.id,
-        rating=3,
-        reviewed_at=now_utc,
-        next_review_at=future_date
+    # Now set updated due date to future
+    stmt = (
+        patch("app.models.StudyProgress.due_date")
+    ) 
+    # Just update DB
+    from sqlalchemy import update
+    stmt = update(StudyProgress).where(StudyProgress.card_id == test_card.id).values(
+        due_date=datetime.now(timezone.utc) + timedelta(days=1)
     )
-    db_session.add(record)
+    await db_session.execute(stmt)
     await db_session.commit()
     
-    due_after_review = await service.get_due_quizzes(test_user.id)
-    assert len(due_after_review) == 0
+    due_after = await service.get_due_cards(test_user.id)
+    assert len(due_after) == 0
 
 @pytest.mark.asyncio
-async def test_calculate_review(db_session, test_user, test_quiz):
+async def test_calculate_review(db_session, test_user, test_card):
     """Test FSRS review calculation."""
     # Mock FSRS to avoid dependency issue locally if not installed
     with patch("app.services.scheduler_service.FSRS") as MockFSRS:
-        # Check if FSRS library installed, if not we mock the simple behavior
-        # But we are in "no dependency mode".
-        # We need to ensure logic runs.
         
         mock_fsrs_instance = MockFSRS.return_value
         # Mock repeat return
@@ -76,7 +96,6 @@ async def test_calculate_review(db_session, test_user, test_quiz):
         mock_card.state.value = 2 # Review
         
         # Structure of fsrs.repeat result: dict[Rating, SchedulingInfo]
-        # We need to simulate this structure.
         mock_sched_info = MagicMock()
         mock_sched_info.card = mock_card
         
@@ -88,10 +107,14 @@ async def test_calculate_review(db_session, test_user, test_quiz):
 
         service = SchedulerService(db_session)
         
-        record = await service.calculate_review(test_user.id, test_quiz.id, 3)  # 3 = Good
+        progress = await service.calculate_review(test_user.id, test_card.id, 3)  # 3 = Good
         
-        assert record.quiz_id == test_quiz.id
-        assert record.rating == 3
-        # In a real test we'd check dates, here we just check record existence logic
-        # assert record.next_review_at > record.reviewed_at
-
+        assert progress.card_id == test_card.id
+        
+        # Check ReviewLog created
+        from sqlalchemy import select
+        l_stmt = select(ReviewLog).where(ReviewLog.card_id == test_card.id)
+        result = await db_session.execute(l_stmt)
+        log = result.scalar_one_or_none()
+        assert log is not None
+        assert log.grade == 3

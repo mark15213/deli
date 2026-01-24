@@ -13,10 +13,6 @@ rating_mock.Again = 1
 rating_mock.Hard = 2
 rating_mock.Good = 3
 rating_mock.Easy = 4
-# Make Rating(x) return the mock value itself to simulate Enum behavior sort of
-# Actually, the service does Rating(rating).
-# If Rating is Enum, Rating(3) -> Rating.Good.
-# We need to mock the CALL to the Rating class.
 def rating_side_effect(val):
     if val == 1: return rating_mock.Again
     if val == 2: return rating_mock.Hard
@@ -43,17 +39,18 @@ import uuid
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.main import app
 from app.core.database import Base, get_db
 from app.core.config import get_settings
 from app.core.security import create_access_token
-from app.models import User, NotionConnection, Quiz, ReviewRecord
-
+from app.models import User, OAuthConnection, Card, ReviewLog, Deck
+# Removed: NotionConnection, Quiz, ReviewRecord
 
 # Test database URL (use separate test database)
-TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/deli_test"
+TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/deli_test"
 
 
 @pytest.fixture(scope="session")
@@ -70,6 +67,7 @@ async def test_engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     
     yield engine
@@ -115,10 +113,12 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 @pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession) -> User:
     """Create a test user."""
+    # User model changed: email, preferences -> settings
+    # Updated User(email, settings, username, avatar_url)
     user = User(
         id=uuid.uuid4(),
         email="test@example.com",
-        preferences={},
+        settings={}, # Changed from preferences
     )
     db_session.add(user)
     await db_session.commit()

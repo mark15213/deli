@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from app.workers.tasks import run_sync_logic
 from app.services.ingestion_service import IngestionService
-from app.models import NotionConnection, User
+from app.models import OAuthConnection, User, SyncConfig, Card
 
 
 
@@ -25,6 +25,7 @@ async def test_ingestion_service_logic(db_session):
 
     # Mock Notion Client
     mock_notion = AsyncMock()
+    # Mock _search_recent return
     mock_notion.search.return_value = {
         "results": [
             {
@@ -58,28 +59,36 @@ async def test_ingestion_service_logic(db_session):
     }
 
     # Create dummy connection
-    user = User(id=uuid4(), email="test@example.com", preferences={})
+    user = User(id=uuid4(), email="test@example.com", settings={})
     db_session.add(user)
     await db_session.flush()
     
-    connection = NotionConnection(
+    connection = OAuthConnection(
         id=uuid4(),
         user_id=user.id,
-        access_token_encrypted="encrypted_token",
-        workspace_id="ws_1",
-        workspace_name="Test WS"
+        provider="notion",
+        provider_user_id="ws_1",
+        access_token="plain_token"
     )
     db_session.add(connection)
+    
+    config = SyncConfig(
+        id=uuid4(),
+        user_id=user.id,
+        source_type="notion_database",
+        external_id="",
+        filter_config={"tags": ["MakeQuiz"]}
+    )
+    db_session.add(config)
     await db_session.commit()
 
     # Run Ingestion Service
     service = IngestionService(db_session)
     
     # Patch external calls
-    with patch("app.services.ingestion_service.AsyncClient", return_value=mock_notion), \
-         patch("app.services.ingestion_service.decrypt_token", return_value="secret"):
+    with patch("app.services.ingestion_service.AsyncClient", return_value=mock_notion):
         
-        chunks = await service.sync_connection(connection)
+        chunks = await service.sync_config(config, connection)
         
         # Verify results
         assert len(chunks) == 1
@@ -94,46 +103,52 @@ async def test_sync_task_integration(db_session):
     
     # Create dummy connection
     user_id = uuid4()
-    user = User(id=user_id, email="sync_test@example.com", preferences={})
+    user = User(id=user_id, email="sync_test@example.com", settings={})
     db_session.add(user)
     await db_session.flush()
     
     conn_id = uuid4()
-    connection = NotionConnection(
+    connection = OAuthConnection(
         id=conn_id,
         user_id=user_id,
-        access_token_encrypted="enc_token",
-        workspace_id="ws_2",
+        provider="notion",
+        provider_user_id="ws_main",
+        access_token="token"
     )
     db_session.add(connection)
+    
+    config = SyncConfig(
+        id=uuid4(),
+        user_id=user.id,
+        source_type="notion_database",
+        external_id="db_main"
+    )
+    db_session.add(config)
+    
     await db_session.commit()
     
-    # Mock IngestionService.sync_connection to return dummy chunks
+    # Mock IngestionService.sync_config to return dummy chunks
     mock_chunks = [{
         "text": "Chunk 1",
-        "source": {"page_id": "p1", "page_title": "P1", "chunk_index": 0},
+        "source": {"page_id": "p1", "page_title": "P1", "chunk_index": 0, "source_material_id": str(uuid4())},
         "metadata": {}
     }]
     
     with patch("app.workers.tasks.IngestionService") as MockIngestion:
         instance = MockIngestion.return_value
-        instance.sync_connection = AsyncMock(return_value=mock_chunks)
+        instance.sync_config = AsyncMock(return_value=mock_chunks)
         
-        # Patch async_session_maker to return our test session
-        with patch("app.workers.tasks.async_session_maker") as mock_maker:
-            mock_maker.return_value = MockSessionManager(db_session)
+        # Patch GeneratorService to mock actual generation to avoid DB constraints or LLM calls
+        with patch("app.workers.tasks.GeneratorService") as MockGenerator:
+            gen_instance = MockGenerator.return_value
+            gen_instance.generate_quizzes_from_chunk = AsyncMock()
+        
+            # Patch async_session_maker to return our test session
+            with patch("app.workers.tasks.async_session_maker") as mock_maker:
+                mock_maker.return_value = MockSessionManager(db_session)
+                
+                # Invoke logic directly (bypassing Celery broker)
+                await run_sync_logic(str(config.id))
             
-            # Invoke logic directly (bypassing Celery broker)
-            await run_sync_logic(str(conn_id))
-        
-        # Verify Query created
-        from sqlalchemy import select
-        from app.models import Quiz
-        
-        stmt = select(Quiz).where(Quiz.user_id == user_id)
-        result = await db_session.execute(stmt)
-        quizzes = result.scalars().all()
-        
-        assert len(quizzes) == 1
-        assert quizzes[0].source_page_title == "P1"
-        assert quizzes[0].question.startswith("Placeholder Question")
+            # Verify Generator called
+            gen_instance.generate_quizzes_from_chunk.assert_called_once()

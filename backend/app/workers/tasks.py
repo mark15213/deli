@@ -3,50 +3,62 @@ import asyncio
 from uuid import UUID
 
 from asgiref.sync import async_to_sync
+from sqlalchemy import select
 
 from app.core.celery_app import celery_app
 from app.core.database import async_session_maker
 from app.services.ingestion_service import IngestionService
 from app.services.generator_service import GeneratorService
-from app.models import NotionConnection
-from app.models import Quiz, QuizStatus, QuizType
+from app.models import SyncConfig, OAuthConnection
+from app.models import Card, CardStatus
 
 
 @celery_app.task
-def sync_notion_content(connection_id: str):
+def sync_notion_content(sync_config_id: str):
     """
-    Celery task to sync content from a specific Notion connection.
+    Celery task to sync content based on a SyncConfig.
     Wraps async logic in sync task.
     """
-    async_to_sync(run_sync_logic)(connection_id)
+    async_to_sync(run_sync_logic)(sync_config_id)
 
 
-async def run_sync_logic(connection_id: str):
+async def run_sync_logic(sync_config_id: str):
     """Async implementation of sync logic."""
     async with async_session_maker() as session:
-        # 1. Get Connection
-        connection = await session.get(NotionConnection, UUID(connection_id))
-        if not connection:
+        # 1. Get SyncConfig
+        config = await session.get(SyncConfig, UUID(sync_config_id))
+        if not config:
             return
 
-        # 2. Run Ingestion
-        ingestion = IngestionService(session)
-        chunks = await ingestion.sync_connection(connection)
+        # 2. Find Linked OAuthConnection
+        # Simplistic assumption: User has 1 notion connection.
+        stmt = select(OAuthConnection).where(
+            OAuthConnection.user_id == config.user_id,
+            OAuthConnection.provider == "notion"
+        )
+        result = await session.execute(stmt)
+        connection = result.scalar_one_or_none()
         
-        # 3. Process Chunks --> Generate Pending Quizzes
+        if not connection:
+            # Need connection to sync
+            return
+
+        # 3. Run Ingestion
+        ingestion = IngestionService(session)
+        # Returns chunks with source_material metadata
+        chunks = await ingestion.sync_config(config, connection)
+        
+        # 4. Process Chunks --> Generate Pending Cards
         generator = GeneratorService(session)
         
         for chunk in chunks:
-            # Generate quizzes for each chunk (F1.5 core)
-            # Metadata: user_id, page_id, page_title already in chunk source/metadata
+            # Generate cards for each chunk
+            # source_metadata needs to align with what GeneratorService expects
             
             source_meta = {
-                "user_id": str(connection.user_id),
-                "page_id": chunk["source"]["page_id"],
-                "page_title": chunk["source"]["page_title"]
+                "user_id": str(config.user_id),
+                "source_material_id": chunk["source"]["source_material_id"],
+                "chunk_index": chunk["source"]["chunk_index"]
             }
             
             await generator.generate_quizzes_from_chunk(chunk["text"], source_meta)
-        
-        # Note: GeneratorService commits internally, but session management here ensures cleanliness.
-        # Ideally we commit once per task or chunk. GeneratorService does commit.

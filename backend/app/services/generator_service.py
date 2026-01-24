@@ -1,21 +1,22 @@
 # Generator Service for creating Quizzes
 import json
 import logging
-from typing import List, Optional
+from typing import List
 from uuid import UUID
+import uuid
 
 from openai import AsyncOpenAI
 import instructor
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.models import Quiz, QuizType, QuizStatus
+from app.models import Card, CardStatus, Deck, User, SourceMaterial
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Define the structure for LLM output
 class QuizOutput(BaseModel):
     question: str = Field(..., description="The question text.")
     options: List[str] = Field(..., description="List of possible answers (for MCQ).")
@@ -33,45 +34,77 @@ class GeneratorService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        # Initialize OpenAI client patched with instructor for structured output
         self.client = instructor.patch(AsyncOpenAI(api_key=settings.openai_api_key))
         
-    async def generate_quizzes_from_chunk(self, text_chunk: str, source_metadata: dict) -> List[Quiz]:
+    async def generate_quizzes_from_chunk(self, text_chunk: str, source_metadata: dict) -> List[Card]:
         """
         Generate quizzes from a text chunk and save them to DB.
+        source_metadata: {
+           "user_id": str,
+           "source_material_id": str (source_materials.id),
+           "chunk_index": int
+        }
         """
         try:
             # 1. Call LLM
             quiz_outputs = await self._call_llm(text_chunk)
             
-            generated_quizzes = []
+            generated_cards = []
             
-            # 2. Parse and Create DB Models
+            user_id = UUID(source_metadata["user_id"])
+            source_mat_id = UUID(source_metadata.get("source_material_id"))
+            
+            # 2. Get or Create Inbox/Default Deck
+            deck_id = await self._get_or_create_default_deck(user_id)
+            
+            # 3. Parse and Create DB Models (Card)
             for q_out in quiz_outputs.quizzes:
-                quiz = Quiz(
-                    user_id=UUID(source_metadata["user_id"]),
-                    type=QuizType.MCQ,
-                    question=q_out.question,
-                    options=q_out.options,
-                    answer=q_out.answer,
-                    explanation=q_out.explanation,
-                    difficulty=q_out.difficulty,
-                    tags=q_out.tags,
-                    status=QuizStatus.PENDING,
-                    source_page_id=source_metadata.get("page_id"),
-                    source_page_title=source_metadata.get("page_title"),
-                    # source_block_id=... (optional if we had granular block tracking)
+                card_content = {
+                    "question": q_out.question,
+                    "options": q_out.options,
+                    "answer": q_out.answer,
+                    "explanation": q_out.explanation
+                }
+                
+                card = Card(
+                    deck_id=deck_id,
+                    source_material_id=source_mat_id,
+                    type="mcq",
+                    content=card_content,
+                    # embedding=... (To be implemented with generic embedding service)
+                    status=CardStatus.PENDING,
+                    tags=q_out.tags
                 )
-                self.db.add(quiz)
-                generated_quizzes.append(quiz)
+                self.db.add(card)
+                generated_cards.append(card)
             
             await self.db.commit()
-            return generated_quizzes
+            return generated_cards
             
         except Exception as e:
             logger.error(f"Error generating quiz: {str(e)}")
-            # In a real system, we might want to store a 'failed_generation' record
             return []
+
+    async def _get_or_create_default_deck(self, user_id: UUID) -> UUID:
+        """Get or create 'Inbox' deck."""
+        stmt = select(Deck).where(
+            Deck.owner_id == user_id, 
+            Deck.title == "Inbox"
+        )
+        result = await self.db.execute(stmt)
+        deck = result.scalar_one_or_none()
+        
+        if not deck:
+            deck = Deck(
+                id=uuid.uuid4(),
+                owner_id=user_id,
+                title="Inbox",
+                description="Default deck for new cards."
+            )
+            self.db.add(deck)
+            await self.db.flush()
+        
+        return deck.id
 
     async def _call_llm(self, text: str) -> QuizList:
         """Invoke LLM to generate structured quiz data."""
@@ -90,7 +123,7 @@ class GeneratorService:
         """
         
         return await self.client.chat.completions.create(
-            model="gpt-3.5-turbo", # Or gpt-4
+            model="gpt-3.5-turbo",
             response_model=QuizList,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that generates quizzes."},

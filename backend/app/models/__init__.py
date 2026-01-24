@@ -1,18 +1,28 @@
 # Models module exports
 from app.models.models import (
     User,
-    NotionConnection,
-    Quiz,
-    QuizType,
-    QuizStatus,
-    ReviewRecord,
+    OAuthConnection,
+    SyncConfig,
+    SourceMaterial,
+    Deck,
+    Card,
+    CardStatus,
+    DeckSubscription,
+    StudyProgress,
+    FSRSState,
+    ReviewLog,
 )
 
 __all__ = [
     "User",
-    "NotionConnection",
-    "Quiz",
-    "QuizType",
-    "QuizStatus",
-    "ReviewRecord",
+    "OAuthConnection",
+    "SyncConfig",
+    "SourceMaterial",
+    "Deck",
+    "Card",
+    "CardStatus",
+    "DeckSubscription",
+    "StudyProgress",
+    "FSRSState",
+    "ReviewLog",
 ]

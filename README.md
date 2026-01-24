@@ -34,6 +34,14 @@ uvicorn app.main:app --reload
 cd web
 npm install
 npm run dev
+
+# 运行测试
+# 注意：测试依赖 pgvector 插件，需启动 Docker 容器
+docker compose up -d postgres
+
+# 运行后端测试
+cd backend
+venv/bin/pytest tests/
 ```
 
 ## 技术栈

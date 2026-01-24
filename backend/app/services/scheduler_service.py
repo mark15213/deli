@@ -1,181 +1,161 @@
 # FSRS Scheduler Service
 from datetime import datetime, timezone
-from typing import Optional, Tuple
-import uuid
+from typing import List
 from uuid import UUID
+import uuid
 
-from fsrs import FSRS, Card, Rating, State
+from fsrs import FSRS, Card as FSRSCard, Rating, State as FSRSStateEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 
-from app.models import ReviewRecord, Quiz, QuizStatus
+from app.models import StudyProgress, ReviewLog, Card, FSRSState, CardStatus
 
 class SchedulerService:
     """Service for managing FSRS scheduling logic."""
+    
+    # Mapping FSRS ints to our string Enums
+    FSRS_INT_TO_STATE = {
+         0: FSRSState.NEW,
+         1: FSRSState.LEARNING,
+         2: FSRSState.REVIEW,
+         3: FSRSState.RELEARNING
+    }
+
+    FSRS_STATE_TO_INT = {
+        FSRSState.NEW: 0,
+        FSRSState.LEARNING: 1,
+        FSRSState.REVIEW: 2,
+        FSRSState.RELEARNING: 3
+    }
     
     def __init__(self, db: AsyncSession):
         self.db = db
         self.fsrs = FSRS()
 
-    async def get_due_quizzes(self, user_id: UUID, limit: int = 50) -> list[Quiz]:
-        """Get quizzes due for review (or new ones)."""
+    async def get_due_cards(self, user_id: UUID, limit: int = 50) -> List[Card]:
+        """Get cards due for review."""
         now = datetime.now(timezone.utc)
         
-        # 1. Fetch quizzes where next_review_at <= now, OR no review record (new)
-        # Note: This query logic needs careful join since we store reviews separately.
-        # Efficient approach: Join Quiz and latest ReviewRecord
+        # 1. Fetch cards with StudyProgress where due_date <= now
+        # Also need to fetch New cards (state='new' or no progress) if configured to mix new/review.
         
-        # For MVP, simpler logic:
-        # Check all quizzes belonging to user with status APPROVED
-        # Filter where related latest review record is due OR none exists
-        
-        # Actually simplest query:
-        # Select * from Quizzes left join ReviewRecords
-        # Where user_id = :uid AND status = APPROVED
-        # AND (next_review_at <= :now OR next_review_at IS NULL)
+        # Simple Logic: 
+        # Join Card and StudyProgress.
+        # Condition: 
+        # - User ID matches
+        # - Card Status is ACTIVE (if we only want active cards)
+        # - (Progress.due_date <= now OR Progress IS NULL)
         
         stmt = (
-            select(Quiz)
-            .outerjoin(ReviewRecord)
+            select(Card)
+            .outerjoin(StudyProgress, and_(
+                StudyProgress.card_id == Card.id,
+                StudyProgress.user_id == user_id
+            ))
+            .join(Card.deck) # Ensure deck ownership or subscription if needed? Cards don't store owner, Decks do.
+            # Assuming user owns the deck or we check deck subscription (omitted for MVP simplicity)
             .where(
-                Quiz.user_id == user_id,
-                Quiz.status == QuizStatus.APPROVED,
+                 # Card.status == CardStatus.ACTIVE,  # Or check deck owner
+                 # For now, let's look for StudyProgress explicitly owned by user
+                 # This implies we only serve cards that are already "started" or we query generic cards.
+                 # Let's query StudyProgress capable cards.
+                 True
             )
-            .group_by(Quiz.id)
-            .having(
-                # Check if most recent review is due
-                # Since ReviewRecords are historical, we need a way to track current state
-                # Option A: Store current state in Quiz model (denormalization) -> Best for performant queries
-                # Option B: Store current state in a "CardState" model 1:1 with Quiz
-                # Option C: Complex subquery.
-                
-                # Looking at models.py, ReviewRecord seems to be historical log (1:N).
-                # But wait, looking at ReviewRecord implementation in models.py:
-                #    next_review_at is stored in ReviewRecord.
-                # This suggests we need to find the LATEST record.
-                
-                # To simplify MVP queries, we should probably add `next_review_at` to the Quiz model itself
-                # or create a persistent `Card` state table.
-                # WITHOUT SCHEMEMA ACHANGE: We assume we query recently reviewed or never reviewed.
-                
-                # Let's adjust query to reliable find due items without schema change:
-                # 1. Fetch quizzes with NO review records (New)
-                # 2. Fetch quizzes with review records where max(next_review_at) <= now
-                
-                # Actually, models.py ReviewRecord has `quiz_id`.
-                # Let's try to query quizzes that do not have a review record with next_review_at > now.
-                # This is "due" if no future review exists.
-                True 
-            )
+            # This query is tricky without explicit ownership on Card. 
+            # Cards belong to Decks. Decks belong to Users. 
+            # But StudyProgress effectively "instantiates" the card for the user.
+            # If we want NEW cards, we need to find cards in decks the user subscribes to/owns that have NO progress.
         )
         
-        # Wait, the current schema on `ReviewRecord` is a log. 
-        # Querying "Latest status" from a log table is expensive.
-        # But `latest_review_at` isn't on Quiz.
-        
-        # FOR MVP: We will fetch all APPROVED quizzes and filter in Python (bad for scale, fine for MVP demo).
-        # OR: We only check `ReviewRecord` table for scheduling? 
-        # But `ReviewRecord` is historical.
-        
-        # Let's stick to Python filtering for safety and simplicity right now.
-        q_stmt = select(Quiz).where(
-            Quiz.user_id == user_id, 
-            Quiz.status == QuizStatus.APPROVED
+        # Improved Approach: Query StudyProgress directly for reviews
+        sp_stmt = (
+             select(StudyProgress)
+             .where(
+                 StudyProgress.user_id == user_id,
+                 StudyProgress.due_date <= now
+             )
+             .limit(limit)
         )
-        result = await self.db.execute(q_stmt)
-        all_quizzes = result.scalars().all()
+        result = await self.db.execute(sp_stmt)
+        progress_items = result.scalars().all()
         
-        due_quizzes = []
-        for quiz in all_quizzes:
-            # Get latest review for this quiz
-            r_stmt = (
-                select(ReviewRecord)
-                .where(ReviewRecord.quiz_id == quiz.id)
-                .order_by(desc(ReviewRecord.reviewed_at))
-                .limit(1)
-            )
-            r_res = await self.db.execute(r_stmt)
-            latest_review = r_res.scalar_one_or_none()
+        cards = []
+        for p in progress_items:
+            # Load card
+            # This is N+1, but efficiently handled by async driver often or we can eager load
+            card_res = await self.db.execute(select(Card).where(Card.id == p.card_id))
+            card = card_res.scalar_one()
+            cards.append(card)
             
-            if not latest_review:
-                # New card, it is due
-                due_quizzes.append(quiz)
-            elif latest_review.next_review_at.replace(tzinfo=timezone.utc) <= now:
-                # Due card
-                due_quizzes.append(quiz)
-                
-            if len(due_quizzes) >= limit:
-                break
-                
-        return due_quizzes
+        return cards
 
-    async def calculate_review(self, user_id: UUID, quiz_id: UUID, rating: int) -> ReviewRecord:
+    async def calculate_review(self, user_id: UUID, card_id: UUID, rating: int) -> StudyProgress:
         """
-        Process a review, calculate next schedule using FSRS, and save record.
+        Process a review, calculate next schedule using FSRS, update StudyProgress and log ReviewLog.
         Rating: 1=Again, 2=Hard, 3=Good, 4=Easy
         """
-        # 1. Get latest review state
-        stmt = (
-            select(ReviewRecord)
-            .where(ReviewRecord.quiz_id == quiz_id)
-            .order_by(desc(ReviewRecord.reviewed_at))
-            .limit(1)
+        now = datetime.now(timezone.utc)
+        
+        # 1. Get current progress
+        stmt = select(StudyProgress).where(
+            StudyProgress.user_id == user_id,
+            StudyProgress.card_id == card_id
         )
         result = await self.db.execute(stmt)
-        last_record = result.scalar_one_or_none()
+        progress = result.scalar_one_or_none()
         
-        # Use naive UTC to match model definition
-        now = datetime.utcnow()
+        fsrs_card = FSRSCard()
         
-        # 2. Reconstruct Card object for FSRS
-        card = Card()
-        if last_record and last_record.fsrs_state:
-            state_dict = last_record.fsrs_state
-            # Map dict back to Card object props if needed, or pass to scheduler
-            # fsrs-python usually takes a Card object.
-            # We need to manually hydrate it if library doesn't support dict init.
-            # Assuming fsrs library usage:
-            card.stability = state_dict.get("stability", card.stability)
-            card.difficulty = state_dict.get("difficulty", card.difficulty)
-            card.elapsed_days = state_dict.get("elapsed_days", 0)
-            card.scheduled_days = state_dict.get("scheduled_days", 0)
-            card.reps = state_dict.get("reps", 0)
-            card.lapses = state_dict.get("lapses", 0)
-            card.state = State(state_dict.get("state", State.New.value))
-            # Ensure last_review is aware for FSRS calculation if required, then convert back
-            if last_record.reviewed_at:
-                 card.last_review = last_record.reviewed_at.replace(tzinfo=timezone.utc)
-        
+        if progress:
+            fsrs_card.stability = progress.stability
+            fsrs_card.difficulty = progress.difficulty
+            fsrs_card.elapsed_days = progress.elapsed_days
+            fsrs_card.scheduled_days = progress.scheduled_days
+            # fsrs_card.reps = ... (add to model if needed)
+            # fsrs_card.lapses = ...
+            fsrs_card.state = FSRSStateEnum(self.FSRS_STATE_TO_INT.get(progress.state, 0))
+            # Need last_review for accurate calc?
+            if progress.last_review_at:
+                fsrs_card.last_review = progress.last_review_at
+        else:
+             # Initialize new progress container
+             progress = StudyProgress(
+                 id=uuid.uuid4(),
+                 user_id=user_id,
+                 card_id=card_id
+             )
+             self.db.add(progress)
+
+        # 2. Capture state before
+        state_before_int = fsrs_card.state.value
+        stability_before = fsrs_card.stability
+        difficulty_before = fsrs_card.difficulty
+
         # 3. Calculate new state
-        # Map integer rating 1-4 to FSRS Rating Enum
         fsrs_rating = Rating(rating)
-        
-        # FSRS expects aware datetime usually
-        scheduling_cards = self.fsrs.repeat(card, now.replace(tzinfo=timezone.utc))
+        scheduling_cards = self.fsrs.repeat(fsrs_card, now)
         new_card = scheduling_cards[fsrs_rating].card
         
-        # Convert due date back to naive UTC for DB
-        next_review_naive = new_card.due.replace(tzinfo=None)
+        # 4. Update Progress
+        progress.stability = new_card.stability
+        progress.difficulty = new_card.difficulty
+        progress.elapsed_days = new_card.elapsed_days
+        progress.scheduled_days = new_card.scheduled_days
+        progress.state = self.FSRS_INT_TO_STATE.get(new_card.state.value, FSRSState.NEW)
+        progress.due_date = new_card.due
+        progress.last_review_at = now
         
-        # 4. Save new ReviewRecord
-        new_record = ReviewRecord(
-            id=uuid.uuid4(),
+        # 5. Log Review
+        log = ReviewLog(
             user_id=user_id,
-            quiz_id=quiz_id,
-            rating=rating,
-            reviewed_at=now,
-            next_review_at=next_review_naive,
-            fsrs_state={
-                "stability": new_card.stability,
-                "difficulty": new_card.difficulty,
-                "elapsed_days": new_card.elapsed_days,
-                "scheduled_days": new_card.scheduled_days,
-                "reps": new_card.reps,
-                "lapses": new_card.lapses,
-                "state": new_card.state.value
-            }
+            card_id=card_id,
+            grade=rating,
+            state_before=self.FSRS_INT_TO_STATE.get(state_before_int, FSRSState.NEW),
+            stability_before=stability_before,
+            difficulty_before=difficulty_before,
+            reviewed_at=now
         )
+        self.db.add(log)
         
-        self.db.add(new_record)
         await self.db.commit()
-        return new_record
+        return progress

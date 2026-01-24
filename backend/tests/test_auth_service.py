@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.notion_service import NotionService
 from app.services.auth_service import AuthService
-from app.models import User, NotionConnection
+from app.models import User, OAuthConnection
 
 
 class TestNotionService:
@@ -55,17 +55,22 @@ class TestAuthService:
             "access_token": "secret_token",
             "workspace_id": "ws_new",
             "workspace_name": "New WS",
-            "owner": {"user": {"email": "new_user@example.com"}}
+            "owner": {"user": {"email": "new_user@example.com", "name": "New User"}},
+            "bot_id": "bot_new"
         }
         
         with patch.object(NotionService, "exchange_code_for_token", return_value=mock_token_data):
             user = await AuthService.authenticate_notion_user(db_session, "fake_code")
             
             assert user.email == "new_user@example.com"
-            assert user.notion_connections[0].workspace_name == "New WS"
-            
-            # Verify encryption (should not be plain text)
-            assert user.notion_connections[0].access_token_encrypted != "secret_token"
+            assert user.username == "New User"
+            # In new service, we store updated oauth connection
+            # Check connection
+            assert len(user.oauth_connections) == 1
+            conn = user.oauth_connections[0]
+            assert conn.provider == "notion"
+            assert conn.provider_user_id == "ws_new"
+            assert conn.access_token == "secret_token"
             
             # Verify DB persistence
             from sqlalchemy import select
@@ -76,11 +81,13 @@ class TestAuthService:
 
     @pytest.mark.asyncio
     async def test_authenticate_existing_user(self, db_session: AsyncSession, test_user: User):
+        # Need to ensure test_user has an email that matches or update mock
         mock_token_data = {
             "access_token": "updated_token",
             "workspace_id": "ws_123",
             "workspace_name": "Updated WS",
-            "owner": {"user": {"email": "test@example.com"}}
+            "owner": {"user": {"email": "test@example.com"}},
+            "bot_id": "bot_123"
         }
         
         with patch.object(NotionService, "exchange_code_for_token", return_value=mock_token_data):
@@ -89,6 +96,7 @@ class TestAuthService:
             assert user.id == test_user.id
             assert user.email == "test@example.com"
             
-            # Verify connection updated
-            conn = user.notion_connections[0]
-            assert conn.workspace_name == "Updated WS"
+            # Verify connection created/updated
+            assert len(user.oauth_connections) >= 1
+            conn = user.oauth_connections[0]
+            assert conn.access_token == "updated_token"

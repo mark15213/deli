@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
 
 from app.services.generator_service import GeneratorService, QuizList, QuizOutput
-from app.models import Quiz, QuizType
+from app.models import Card, SourceMaterial, SyncConfig
 
 @pytest.fixture
 def mock_quiz_list():
@@ -26,8 +26,15 @@ async def test_generate_quizzes_from_chunk(db_session, mock_quiz_list):
     # Create a user first to satisfy ForeignKey
     from app.models import User
     user_id = uuid4()
-    user = User(id=user_id, email="test_gen@example.com", preferences={})
+    user = User(id=user_id, email="test_gen@example.com", settings={})
     db_session.add(user)
+    
+    # Create a source material and config
+    config = SyncConfig(id=uuid4(), user_id=user_id, source_type="notion_database", external_id="db_1")
+    db_session.add(config)
+    source = SourceMaterial(id=uuid4(), user_id=user_id, config_id=config.id, external_id="p_1")
+    db_session.add(source)
+    
     await db_session.commit()
     
     # Mock LLM Client
@@ -39,23 +46,27 @@ async def test_generate_quizzes_from_chunk(db_session, mock_quiz_list):
     
     source_meta = {
         "user_id": str(user_id),
-        "page_id": "page_123",
-        "page_title": "Test Page"
+        "source_material_id": str(source.id),
+        "chunk_index": 0
     }
     
-    quizzes = await service.generate_quizzes_from_chunk("Some text content", source_meta)
+    cards = await service.generate_quizzes_from_chunk("Some text content", source_meta)
     
-    assert len(quizzes) == 1
-    assert quizzes[0].question == "What is Python?"
-    assert quizzes[0].answer == "A language"
-    assert quizzes[0].source_page_title == "Test Page"
+    assert len(cards) == 1
+    assert cards[0].content["question"] == "What is Python?"
+    assert cards[0].content["answer"] == "A language"
+    # assert cards[0].source_page_title == "Test Page" # Not stored on card anymore directly
     
     # Verify DB persistence
     from sqlalchemy import select
-    stmt = select(Quiz).where(Quiz.question == "What is Python?")
+    # JSONB query in SQLAlchemy
+    # stmt = select(Card).where(Card.content['question'].astext == "What is Python?")
+    # Simple workaround for test
+    stmt = select(Card).where(Card.id == cards[0].id)
     result = await db_session.execute(stmt)
-    db_quiz = result.scalar_one()
-    assert db_quiz.id == quizzes[0].id
+    db_card = result.scalar_one()
+    assert db_card.deck_id is not None
+    assert db_card.content["question"] == "What is Python?"
 
 @pytest.mark.asyncio
 async def test_llm_failure_handling(db_session):
@@ -67,7 +78,15 @@ async def test_llm_failure_handling(db_session):
     service = GeneratorService(db_session)
     service.client = mock_client
     
-    source_meta = {"user_id": str(uuid4())}
-    quizzes = await service.generate_quizzes_from_chunk("Text", source_meta)
+    # Needs valid source_mat_id to not crash before LLM call? 
+    # The service calls LLM first, so invalid ID might not matter until DB save.
+    # But UUID parsing happens early.
     
-    assert len(quizzes) == 0
+    source_meta = {
+        "user_id": str(uuid4()), 
+        "source_material_id": str(uuid4()),
+        "chunk_index": 0
+    }
+    cards = await service.generate_quizzes_from_chunk("Text", source_meta)
+    
+    assert len(cards) == 0

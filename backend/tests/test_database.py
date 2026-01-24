@@ -4,7 +4,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User, Quiz, NotionConnection, ReviewRecord, QuizType, QuizStatus
+from app.models import User, Card, OAuthConnection, ReviewLog, CardStatus, Deck
 
 
 class TestDatabaseConnection:
@@ -28,7 +28,7 @@ class TestModelCRUD:
         user = User(
             id=uuid.uuid4(),
             email="crud_test@example.com",
-            preferences={"theme": "dark"},
+            settings={"theme": "dark"},
         )
         db_session.add(user)
         await db_session.commit()
@@ -36,21 +36,20 @@ class TestModelCRUD:
         
         assert user.id is not None
         assert user.email == "crud_test@example.com"
-        assert user.preferences == {"theme": "dark"}
+        assert user.settings == {"theme": "dark"}
         assert user.created_at is not None
 
     @pytest.mark.asyncio
-    async def test_create_notion_connection(self, db_session: AsyncSession, test_user: User):
-        """Test creating a Notion connection."""
+    async def test_create_oauth_connection(self, db_session: AsyncSession, test_user: User):
+        """Test creating an OAuth connection."""
         import uuid
         
-        connection = NotionConnection(
+        connection = OAuthConnection(
             id=uuid.uuid4(),
             user_id=test_user.id,
-            access_token_encrypted="encrypted_token_here",
-            workspace_id="ws_123",
-            workspace_name="Test Workspace",
-            selected_databases={"db1": True},
+            provider="notion",
+            provider_user_id="ws_123",
+            access_token="token_here"
         )
         db_session.add(connection)
         await db_session.commit()
@@ -58,72 +57,77 @@ class TestModelCRUD:
         
         assert connection.id is not None
         assert connection.user_id == test_user.id
-        assert connection.workspace_name == "Test Workspace"
+        assert connection.provider == "notion"
 
     @pytest.mark.asyncio
-    async def test_create_quiz(self, db_session: AsyncSession, test_user: User):
-        """Test creating a quiz."""
+    async def test_create_card(self, db_session: AsyncSession, test_user: User):
+        """Test creating a card."""
         import uuid
         
-        quiz = Quiz(
-            id=uuid.uuid4(),
-            user_id=test_user.id,
-            type=QuizType.MCQ,
-            question="What is Python?",
-            options=["A. A snake", "B. A language", "C. A framework", "D. A database"],
-            answer="B",
-            explanation="Python is a programming language.",
-            tags=["python", "basics"],
-            status=QuizStatus.PENDING,
-        )
-        db_session.add(quiz)
+        # Need a Deck first
+        deck = Deck(id=uuid.uuid4(), owner_id=test_user.id, title="Test Deck")
+        db_session.add(deck)
         await db_session.commit()
-        await db_session.refresh(quiz)
         
-        assert quiz.id is not None
-        assert quiz.type == QuizType.MCQ
-        assert quiz.status == QuizStatus.PENDING
+        card = Card(
+            id=uuid.uuid4(),
+            deck_id=deck.id,
+            type="mcq",
+            content={"question": "Q", "answer": "A"},
+            status=CardStatus.PENDING,
+            tags=["demo"]
+        )
+        db_session.add(card)
+        await db_session.commit()
+        await db_session.refresh(card)
+        
+        assert card.id is not None
+        assert card.type == "mcq"
+        assert card.status == CardStatus.PENDING
+        assert card.tags == ["demo"]
 
     @pytest.mark.asyncio
-    async def test_create_review_record(self, db_session: AsyncSession, test_user: User):
+    async def test_create_review_log(self, db_session: AsyncSession, test_user: User):
         """Test creating a review record."""
         import uuid
         from datetime import datetime, timedelta
         
-        # First create a quiz
-        quiz = Quiz(
+        # Create deck and card
+        deck = Deck(id=uuid.uuid4(), owner_id=test_user.id, title="Test Deck")
+        db_session.add(deck)
+        card = Card(
             id=uuid.uuid4(),
-            user_id=test_user.id,
-            type=QuizType.FLASHCARD,
-            question="What is FastAPI?",
-            answer="A web framework for building APIs with Python.",
-            status=QuizStatus.APPROVED,
+            deck_id=deck.id,
+            type="flashcard",
+            content={"question": "Q"},
+            status=CardStatus.ACTIVE,
         )
-        db_session.add(quiz)
+        db_session.add(card)
         await db_session.commit()
         
-        # Create review record
-        review = ReviewRecord(
+        # Create review log
+        log = ReviewLog(
             id=uuid.uuid4(),
-            quiz_id=quiz.id,
+            card_id=card.id,
             user_id=test_user.id,
-            rating=3,  # Good
-            fsrs_state={"stability": 1.0, "difficulty": 5.0},
-            next_review_at=datetime.utcnow() + timedelta(days=1),
+            grade=3,  # Good
+            state_before="new",
+            stability_before=0.0,
+            reviewed_at=datetime.utcnow()
         )
-        db_session.add(review)
+        db_session.add(log)
         await db_session.commit()
-        await db_session.refresh(review)
+        await db_session.refresh(log)
         
-        assert review.id is not None
-        assert review.rating == 3
-        assert review.fsrs_state["stability"] == 1.0
+        assert log.id is not None
+        assert log.grade == 3
+        # Enum check might return enum member
+        assert log.state_before.value == "new" or log.state_before == "new"
 
     @pytest.mark.asyncio
     async def test_user_cascade_delete(self, db_session: AsyncSession):
         """Test that deleting a user cascades to related records."""
         import uuid
-        from datetime import datetime, timedelta
         
         # Create user
         user = User(
@@ -131,24 +135,18 @@ class TestModelCRUD:
             email="cascade_test@example.com",
         )
         db_session.add(user)
+        # Create deck
+        deck = Deck(id=uuid.uuid4(), owner_id=user.id, title="Test Deck")
+        db_session.add(deck)
         await db_session.commit()
         
-        # Create quiz for user
-        quiz = Quiz(
-            id=uuid.uuid4(),
-            user_id=user.id,
-            type=QuizType.MCQ,
-            question="Test question",
-            answer="Test answer",
-        )
-        db_session.add(quiz)
-        await db_session.commit()
+        deck_id = deck.id
         
         # Delete user
         await db_session.delete(user)
         await db_session.commit()
         
-        # Verify quiz is also deleted (cascade)
+        # Verify deck is also deleted (cascade)
         from sqlalchemy import select
-        result = await db_session.execute(select(Quiz).where(Quiz.id == quiz.id))
+        result = await db_session.execute(select(Deck).where(Deck.id == deck_id))
         assert result.scalar_one_or_none() is None
