@@ -1,41 +1,89 @@
+"use client";
+
+import { AppShell } from "@/components/layout/app-shell";
+import { FeedColumn } from "@/components/layout/feed-column";
+import { DetailColumn } from "@/components/layout/detail-column";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DigestionChart } from "@/features/dashboard/digestion-chart";
+
 export default function Home() {
     return (
-        <main className="min-h-screen bg-gray-50">
-            <div className="max-w-7xl mx-auto px-4 py-8">
-                <header className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">Deli Admin</h1>
-                    <p className="text-gray-600">Manage your knowledge quizzes</p>
-                </header>
+        <AppShell>
+            <FeedColumn>
+                <div className="p-4 space-y-4">
+                    <h2 className="text-lg font-semibold mb-4">Dashboard</h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Stats Cards */}
-                    <div className="bg-white rounded-lg shadow p-6">
-                        <h3 className="text-sm font-medium text-gray-500">Pending Review</h3>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">0</p>
-                    </div>
-                    <div className="bg-white rounded-lg shadow p-6">
-                        <h3 className="text-sm font-medium text-gray-500">Total Quizzes</h3>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">0</p>
-                    </div>
-                    <div className="bg-white rounded-lg shadow p-6">
-                        <h3 className="text-sm font-medium text-gray-500">Last Sync</h3>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">-</p>
+                    {/* Digestion Rate Card */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Today&apos;s Digestion Rate
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <DigestionChart input={50} learned={20} />
+                        </CardContent>
+                    </Card>
+
+                    {/* Quick Stats */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <Card>
+                            <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground">Pending</p>
+                                <p className="text-2xl font-bold">12</p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground">Sources</p>
+                                <p className="text-2xl font-bold">5</p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground">Flashcards</p>
+                                <p className="text-2xl font-bold">156</p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground">Due Today</p>
+                                <p className="text-2xl font-bold">23</p>
+                            </CardContent>
+                        </Card>
                     </div>
                 </div>
+            </FeedColumn>
 
-                {/* Inbox Section */}
-                <section className="mt-8">
-                    <h2 className="text-xl font-semibold text-gray-900 mb-4">Inbox</h2>
-                    <div className="bg-white rounded-lg shadow">
-                        <div className="p-8 text-center text-gray-500">
-                            <p>No pending items</p>
-                            <p className="text-sm mt-2">
-                                Connect your Notion workspace to start generating quizzes
-                            </p>
+            <DetailColumn>
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                    <div className="text-center max-w-lg p-6">
+                        <div className="mb-6 flex justify-center">
+                            <div className="h-24 w-24 rounded-2xl bg-gradient-to-tr from-primary/20 to-primary/5 flex items-center justify-center">
+                                <span className="text-5xl">🧠</span>
+                            </div>
+                        </div>
+                        <h3 className="text-2xl font-bold mb-2 text-foreground">Welcome to Gulp</h3>
+                        <p className="text-lg mb-6">
+                            Your personal knowledge digestion engine.
+                        </p>
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="p-4 rounded-lg bg-card border">
+                                <p className="font-bold text-lg">1. Ingest</p>
+                                <p className="text-xs text-muted-foreground">Add data sources</p>
+                            </div>
+                            <div className="p-4 rounded-lg bg-card border">
+                                <p className="font-bold text-lg">2. Process</p>
+                                <p className="text-xs text-muted-foreground">AI Generates insights</p>
+                            </div>
+                            <div className="p-4 rounded-lg bg-card border">
+                                <p className="font-bold text-lg">3. Learn</p>
+                                <p className="text-xs text-muted-foreground">Internalize knowledge</p>
+                            </div>
                         </div>
                     </div>
-                </section>
-            </div>
-        </main>
+                </div>
+            </DetailColumn>
+        </AppShell>
     );
 }

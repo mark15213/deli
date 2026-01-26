@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-    title: "Deli Admin",
-    description: "Manage your knowledge quizzes",
+    title: "Gulp - Knowledge Management",
+    description: "Ingest, process, and internalize knowledge with AI",
 };
 
 export default function RootLayout({
@@ -12,8 +16,12 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en">
-            <body className="antialiased">{children}</body>
+        <html lang="en" suppressHydrationWarning>
+            <body className={`${inter.className} antialiased`}>
+                <ThemeProvider defaultTheme="dark" storageKey="gulp-ui-theme">
+                    {children}
+                </ThemeProvider>
+            </body>
         </html>
     );
 }
