@@ -9,8 +9,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models import OAuthConnection, SyncConfig, SourceMaterial, User
-# from app.core.security import decrypt_token # We decided to store plain token for now
+from app.models import OAuthConnection, Source, SourceMaterial, User
 
 logger = logging.getLogger(__name__)
 
@@ -26,26 +25,25 @@ class IngestionService:
             separators=["\n\n", "\n", " ", ""],
         )
 
-    async def sync_config(self, config: SyncConfig, connection: OAuthConnection) -> List[Dict[str, Any]]:
+    async def sync_source(self, source: Source, connection: OAuthConnection) -> List[Dict[str, Any]]:
         """
-        Sync content based on a SyncConfig using the provided OAuth connection.
+        Sync content based on a Source using the provided OAuth connection.
         Returns a list of processed chunks.
         """
         try:
             # 1. Initialize Notion Client
-            # token = decrypt_token(connection.access_token)
             token = connection.access_token
             notion = AsyncClient(auth=token)
 
             # 2. Fetch pages
-            pages = await self._fetch_pages(notion, config)
+            pages = await self._fetch_pages(notion, source)
             
             processed_chunks = []
             
             for page in pages:
                 # 3. Check tags/status logic is handled in fetch or here
-                # If config has filters, apply them.
-                if not self._should_process_page(page, config):
+                # If source has filters, apply them.
+                if not self._should_process_page(page, source):
                     continue
                 
                 # 4. Fetch page content
@@ -59,10 +57,8 @@ class IngestionService:
                     continue
                 
                 # 5.5 Update/Create SourceMaterial
-                # Check hash to see if changed (Implement hash later, or just overwrite for now)
-                
                 source_mat = await self._get_or_create_source_material(
-                    config, page_id, page, text_content
+                    source, page_id, page, text_content
                 )
 
                 # 6. Chunk content
@@ -79,29 +75,29 @@ class IngestionService:
                             "chunk_index": i
                         },
                         "metadata": {
-                            "user_id": str(config.user_id),
+                            "user_id": str(source.user_id),
                             "synced_at": datetime.utcnow().isoformat()
                         }
                     })
 
             # Update last synced time
-            config.last_synced_at = datetime.utcnow()
+            source.last_synced_at = datetime.utcnow()
             await self.db.commit()
             
             return processed_chunks
 
         except Exception as e:
-            logger.error(f"Error syncing config {config.id}: {str(e)}")
+            logger.error(f"Error syncing source {source.id}: {str(e)}")
             raise e
 
-    async def _get_or_create_source_material(self, config: SyncConfig, page_id: str, page_data: dict, content: str) -> SourceMaterial:
+    async def _get_or_create_source_material(self, source: Source, page_id: str, page_data: dict, content: str) -> SourceMaterial:
         """Track the source page in DB."""
         # Simple content hash
         import hashlib
         content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
         
         stmt = select(SourceMaterial).where(
-            SourceMaterial.user_id == config.user_id,
+            SourceMaterial.user_id == source.user_id,
             SourceMaterial.external_id == page_id
         )
         result = await self.db.execute(stmt)
@@ -114,37 +110,33 @@ class IngestionService:
             existing.content_hash = content_hash
             existing.title = title
             existing.external_url = url
-            # existing.raw_snippet = content[:200]
-            existing.config_id = config.id
+            existing.source_id = source.id
             return existing
         else:
             new_source = SourceMaterial(
-                user_id=config.user_id,
-                config_id=config.id,
+                user_id=source.user_id,
+                source_id=source.id,
                 external_id=page_id,
                 external_url=url,
                 title=title,
                 content_hash=content_hash,
-                # raw_snippet=content[:200]
             )
             self.db.add(new_source)
             await self.db.flush() # get ID
             return new_source
 
-    async def _fetch_pages(self, notion: AsyncClient, config: SyncConfig) -> List[dict]:
-        """Fetch pages from Notion based on config."""
-        # If config designates a specific database, query it.
-        # Else search.
+    async def _fetch_pages(self, notion: AsyncClient, source: Source) -> List[dict]:
+        """Fetch pages from Notion based on source."""
         
-        # For now, simplistic implementation:
-        # Use Search if external_id is not set or logic implies 'all'
-        # But SyncConfig has `source_type` and `external_id`.
+        # Check if source designates a specific database
+        # e.g. connection_config = {"database_id": "xyz"}
+        db_id = source.connection_config.get("database_id") if source.connection_config else None
         
-        if config.source_type == "notion_database" and config.external_id:
-             return await self._query_database(notion, config.external_id, config.last_synced_at)
+        if source.type == "NOTION_KB" and db_id:
+             return await self._query_database(notion, db_id, source.last_synced_at)
         
-        # Fallback to search (e.g. if source_type='workspace')
-        return await self._search_recent(notion, config.last_synced_at)
+        # Fallback to search
+        return await self._search_recent(notion, source.last_synced_at)
 
     async def _query_database(self, notion: AsyncClient, db_id: str, last_synced: datetime) -> List[dict]:
         query = {
@@ -197,20 +189,18 @@ class IngestionService:
              return filtered
         return results
 
-    def _should_process_page(self, page: dict, config: SyncConfig) -> bool:
+    def _should_process_page(self, page: dict, source: Source) -> bool:
         """Check if page matches filter config."""
-        # Check explicit filters in SyncConfig
-        # e.g. {"tags": ["MakeQuiz"]}
         
-        filters = config.filter_config or {}
+        filters = source.ingestion_rules.get("filter", {}) if source.ingestion_rules else {}
         required_tags = filters.get("tags", [])
         
+        # If ingestion_rules is just flat {"tags": ...} support that too
+        if not required_tags and source.ingestion_rules:
+             required_tags = source.ingestion_rules.get("tags", [])
+        
         if not required_tags:
-            # Default behavior if no filters: maybe require #MakeQuiz?
-            # Or assume explicit selection implies processing.
-            # Let's default to check for "MakeQuiz" if nothing specified to prevent spam, 
-            # unless it's a specific DB sync where we might want everything.
-            # Per PRD: "Only when a page is tagged with #MakeQuiz"
+            # Default behavior
             required_tags = ["MakeQuiz"]
             
         props = page.get("properties", {})
@@ -263,3 +253,4 @@ class IngestionService:
             if prop["type"] == "title":
                 return "".join([t.get("plain_text", "") for t in prop["title"]])
         return "Untitled"
+

@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models import User, SyncConfig
+from app.models import User, Source
 from app.workers.tasks import sync_notion_content
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -18,27 +18,26 @@ async def trigger_sync(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Manually trigger sync for all SyncConfigs of the current user.
+    Manually trigger sync for all Sources of the current user.
     """
-    # 1. Fetch user's sync configs
-    stmt = select(SyncConfig).where(SyncConfig.user_id == current_user.id)
+    # 1. Fetch user's sources
+    stmt = select(Source).where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
-    configs = result.scalars().all()
+    sources = result.scalars().all()
     
-    if not configs:
-        # Fallback? Maybe return warning or try to create default?
-        return {"status": "no_config", "message": "No sync configuration found."}
+    if not sources:
+        return {"status": "no_source", "message": "No source configuration found."}
     
     # 2. Trigger Celery tasks
     task_ids = []
-    for config in configs:
+    for source in sources:
         # Use delay() for async execution via Celery
-        task = sync_notion_content.delay(str(config.id))
+        task = sync_notion_content.delay(str(source.id))
         task_ids.append(str(task.id))
         
     return {
         "status": "triggered",
-        "configs_count": len(configs),
+        "sources_count": len(sources),
         "task_ids": task_ids
     }
 
@@ -48,17 +47,18 @@ async def get_sync_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get status of sync configs."""
-    stmt = select(SyncConfig).where(SyncConfig.user_id == current_user.id)
+    """Get status of sources."""
+    stmt = select(Source).where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
-    configs = result.scalars().all()
+    sources = result.scalars().all()
     
     return [
         {
-            "config_id": str(conf.id),
-            "source_type": conf.source_type,
-            "last_synced_at": conf.last_synced_at,
-            "status": conf.status
+            "source_id": str(src.id),
+            "source_type": src.type,
+            "name": src.name,
+            "last_synced_at": src.last_synced_at,
+            "status": src.status
         }
-        for conf in configs
+        for src in sources
     ]

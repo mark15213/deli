@@ -2,7 +2,6 @@
 from app.models.models import (
     User,
     OAuthConnection,
-    SyncConfig,
     SourceMaterial,
     Deck,
     Card,
@@ -17,7 +16,6 @@ from app.models.models import (
 __all__ = [
     "User",
     "OAuthConnection",
-    "SyncConfig",
     "SourceMaterial",
     "Deck",
     "Card",

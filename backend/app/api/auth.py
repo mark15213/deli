@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import create_access_token
 from app.services.auth_service import AuthService
 from app.services.notion_service import NotionService
-from app.models import SyncConfig, OAuthConnection
+from app.models import Source, OAuthConnection
 
 settings = get_settings()
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -31,31 +31,28 @@ async def notion_callback(
     # Authenticate via Notion and get/create User
     user = await AuthService.authenticate_notion_user(db, code)
     
-    # Check/Create Default Sync Config
-    # Check if we have a sync config for this user's notion connection
-    # Since OAuthConnection is established, we can default a SyncConfig to import from the workspace
-    # or just leave it empty.
-    # To facilitate "Magic", let's create a default "Import All" config if none exists.
+    # Check/Create Default Source
+    # Check if we have a source for this user's notion connection
     
-    stmt = select(SyncConfig).where(
-        SyncConfig.user_id == user.id,
-        SyncConfig.source_type == "notion_database"
+    stmt = select(Source).where(
+        Source.user_id == user.id,
+        Source.type == "NOTION_KB"
     )
     result = await db.execute(stmt)
-    existing_config = result.scalar_one_or_none()
+    existing_source = result.scalar_one_or_none()
     
-    if not existing_config:
-        # Find the connection to get workspace info (if needed)
-        # For now, just create a default config
-        default_config = SyncConfig(
+    if not existing_source:
+        # Create a default source for the workspace
+        default_source = Source(
             id=uuid.uuid4(),
             user_id=user.id,
-            source_type="notion_database",
-            external_id="", # Empty implies "Search everything available" or we need to ask user to select DB
-            filter_config={"tags": ["MakeQuiz"]},
-            status="active"
+            name="Notion Connection",
+            type="NOTION_KB",
+            connection_config={}, # Config is largely in OAuthConnection for now, or could duplicate relevant bits
+            ingestion_rules={"tags": ["MakeQuiz"]},
+            status="ACTIVE"
         )
-        db.add(default_config)
+        db.add(default_source)
         await db.commit()
 
     # Create JWT Access Token
