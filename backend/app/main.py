@@ -4,8 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+
 from app.core.config import get_settings
 from app.api import api_router
+from app.core.database import async_session_maker
+from app.core.debug_data import reseed_debug_sources
 
 settings = get_settings()
 
@@ -15,6 +18,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     print(f"Starting {settings.app_name} v{settings.app_version}")
+    
+    # Debug Data Seeding
+    try:
+        async with async_session_maker() as db:
+            await reseed_debug_sources(db)
+    except Exception as e:
+        print(f"Startup warning: Failed to seed debug data: {e}")
+
     yield
     # Shutdown
     print("Shutting down...")

@@ -16,6 +16,8 @@ import { ConfigTab } from "./tabs/ConfigTab"
 import { RulesTab } from "./tabs/RulesTab"
 import { LogsTab } from "./tabs/LogsTab"
 import { Power, Save, RefreshCw, Trash2 } from "lucide-react"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface SourceDetailDrawerProps {
     isOpen: boolean
@@ -119,8 +121,20 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                                         <RefreshCw className="w-4 h-4" />
                                         TL;DR Summary
                                     </h3>
-                                    <div className="p-4 bg-muted/30 rounded-lg text-sm leading-relaxed whitespace-pre-wrap">
-                                        {paperData.summary}
+                                    <div className="p-4 bg-muted/30 rounded-lg text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none break-words">
+                                        <ReactMarkdown
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                a: ({ node, ...props }) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />,
+                                                p: ({ node, ...props }) => <p {...props} className="mb-2 last:mb-0" />,
+                                                ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-4 mb-2" />,
+                                                ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-4 mb-2" />,
+                                                li: ({ node, ...props }) => <li {...props} className="mb-1" />,
+                                                strong: ({ node, ...props }) => <strong {...props} className="font-semibold text-foreground" />,
+                                            }}
+                                        >
+                                            {paperData.summary}
+                                        </ReactMarkdown>
                                     </div>
                                 </div>
                             ) : (

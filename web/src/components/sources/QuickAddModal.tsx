@@ -157,6 +157,11 @@ export function QuickAddModal({ onSourceAdded }: { onSourceAdded?: () => void })
                                         onChange={(e) => setSourceName(e.target.value)}
                                         className="font-medium h-8"
                                     />
+                                    {detectionResult.metadata.author && (
+                                        <p className="text-xs text-muted-foreground font-medium">
+                                            {detectionResult.metadata.author}
+                                        </p>
+                                    )}
                                     <p className="text-sm text-muted-foreground line-clamp-2">
                                         {detectionResult.metadata.description}
                                     </p>

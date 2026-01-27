@@ -19,6 +19,21 @@ export async function detectSource(input: string): Promise<DetectResponse> {
     return res.json();
 }
 
+export async function getSources(): Promise<Source[]> {
+    const res = await fetch(`${API_BASE_URL}/sources/`, {
+        method: "GET",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to fetch sources");
+    }
+
+    return res.json();
+}
+
 export async function createSource(data: Partial<Source>): Promise<Source> {
     // Note: The backend expects specific CreateSchema structure. 
     // Ideally we map `data` to `SourceCreate` structure here if they differ significantly.
