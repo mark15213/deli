@@ -7,7 +7,7 @@ from typing import Optional, List
 from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, JSON, Integer, Float, Boolean, UniqueConstraint, Index, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from pgvector.sqlalchemy import Vector
+
 
 from app.core.database import Base
 
@@ -46,6 +46,7 @@ class User(Base):
     # Relationships
     oauth_connections: Mapped[List["OAuthConnection"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sync_configs: Mapped[List["SyncConfig"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    sources: Mapped[List["Source"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     source_materials: Mapped[List["SourceMaterial"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     decks: Mapped[List["Deck"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     study_progress: Mapped[List["StudyProgress"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -154,9 +155,6 @@ class Card(Base):
     type: Mapped[str] = mapped_column(String(30)) # 'mcq', 'cloze', 'code'
     content: Mapped[dict] = mapped_column(JSONB) # Q/A, options, etc
     
-    # 1536 dim vector for OpenAI embeddings
-    embedding = mapped_column(Vector(1536))
-    
     status: Mapped[CardStatus] = mapped_column(Enum(CardStatus), default=CardStatus.PENDING)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     
@@ -230,3 +228,38 @@ class ReviewLog(Base):
 
     # No relationships defined for simple log table to avoid overhead, 
     # but can add if needed.
+
+class Source(Base):
+    """
+    Core Source entity separating Connection (static) and Logic (dynamic).
+    Replaces legacy SyncConfig.
+    """
+    __tablename__ = "sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    
+    name: Mapped[str] = mapped_column(String(255))
+    type: Mapped[str] = mapped_column(String(50)) # e.g. 'NOTION_KB', 'X_SOCIAL'
+    
+    # Connection Config (Encrypted/Sensitive)
+    # Stores: url, auth_token, api_keys
+    connection_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    
+    # Ingestion Rules (Dynamic/User Tunable)
+    # Stores: filters, prompts, frequency
+    ingestion_rules: Mapped[dict] = mapped_column(JSONB, default=dict)
+    
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE") # ACTIVE, PAUSED, ERROR
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="sources")
+    # source_materials: Mapped[List["SourceMaterial"]] = relationship(back_populates="source") 
+    # Note: SourceMaterial relationship needs to be updated to point to Source instead of SyncConfig if we deprecate it.
+    # For now, I will leave SourceMaterial pointing to 'config' (SyncConfig) to avoid breaking existing code abruptly,
+    # or I will update User to have 'sources'.

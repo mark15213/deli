@@ -11,7 +11,7 @@ from alembic import context
 # Import models and config
 from app.core.config import get_settings
 from app.core.database import Base
-from app.models import User, NotionConnection, Quiz, ReviewRecord  # noqa: F401
+from app.models import User, OAuthConnection, SyncConfig, SourceMaterial, Deck, Card, StudyProgress, ReviewLog, Source  # noqa: F401
 
 # Alembic Config object
 config = context.config

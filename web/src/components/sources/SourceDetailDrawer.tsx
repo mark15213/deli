@@ -11,6 +11,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { SourceFormContainer } from "./forms/SourceFormContainer"
 import { ConfigTab } from "./tabs/ConfigTab"
 import { RulesTab } from "./tabs/RulesTab"
 import { LogsTab } from "./tabs/LogsTab"
@@ -48,21 +49,12 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                     </div>
                 </div>
 
-                {/* Body - Tabs */}
-                <div className="flex-1 overflow-hidden mt-6">
-                    <Tabs defaultValue="config" className="h-full flex flex-col">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="config">Configuration</TabsTrigger>
-                            <TabsTrigger value="rules">Rules</TabsTrigger>
-                            <TabsTrigger value="logs">Logs</TabsTrigger>
-                        </TabsList>
-
-                        <div className="flex-1 overflow-y-auto min-h-0 mt-2 pr-1">
-                            <TabsContent value="config" className="mt-0 h-full"><ConfigTab /></TabsContent>
-                            <TabsContent value="rules" className="mt-0 h-full"><RulesTab /></TabsContent>
-                            <TabsContent value="logs" className="mt-0 h-full"><LogsTab /></TabsContent>
-                        </div>
-                    </Tabs>
+                {/* Body - Unified Form */}
+                <div className="flex-1 overflow-hidden mt-6 flex flex-col">
+                    <SourceFormContainer
+                        type={sourceId === 'twitter' ? 'X_SOCIAL' : sourceId === 'notion' ? 'NOTION_KB' : 'WEB_RSS'}
+                        onSave={(data) => console.log("Saving:", data)}
+                    />
                 </div>
 
                 {/* Footer */}

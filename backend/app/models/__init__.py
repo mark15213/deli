@@ -11,6 +11,7 @@ from app.models.models import (
     StudyProgress,
     FSRSState,
     ReviewLog,
+    Source,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "StudyProgress",
     "FSRSState",
     "ReviewLog",
+    "Source",
 ]
