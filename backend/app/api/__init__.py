@@ -18,3 +18,5 @@ api_router.include_router(stats_router)
 api_router.include_router(sync_router)
 from app.api.sources import router as sources_router
 api_router.include_router(sources_router)
+from app.api.paper import router as paper_router
+api_router.include_router(paper_router)

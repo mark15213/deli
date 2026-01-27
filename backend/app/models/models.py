@@ -90,6 +90,9 @@ class SourceMaterial(Base):
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     raw_snippet: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
+    # Stores generated artifacts (Summary, Lens Suggestions, etc.)
+    rich_data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     __table_args__ = (
