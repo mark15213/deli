@@ -59,4 +59,37 @@ async def get_current_active_user(
     Can be extended to check for active status/roles.
     """
     # For now, all users are active
+    # For now, all users are active
     return current_user
+
+# --- Debug / Dev Dependencies ---
+
+import uuid
+from app.models.models import User
+
+async def get_mock_user(db: Annotated[AsyncSession, Depends(get_db)]) -> User:
+    """
+    Return a mock user for debugging/development without auth.
+    Creates the user if not exists to ensure valid foreign keys.
+    """
+    # Use a fixed UUID for the mock user so it persists across restarts/calls effectively if DB is persistent
+    mock_id = uuid.UUID("00000000-0000-0000-0000-000000000001") 
+    
+    # Try to find existing
+    stmt = select(User).where(User.id == mock_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        user = User(
+            id=mock_id,
+            email="debug@deli.app",
+            username="Debug User",
+        )
+        db.add(user)
+        # Commit manually here since this is a dep? 
+        # Ideally deps shouldn't commit side effects but for a mock user generator it's acceptable.
+        await db.commit()
+        await db.refresh(user)
+        
+    return user

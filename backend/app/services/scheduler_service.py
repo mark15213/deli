@@ -4,7 +4,7 @@ from typing import List
 from uuid import UUID
 import uuid
 
-from fsrs import FSRS, Card as FSRSCard, Rating, State as FSRSStateEnum
+from fsrs import Scheduler, Card as FSRSCard, Rating, State as FSRSStateEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 
@@ -30,7 +30,7 @@ class SchedulerService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.fsrs = FSRS()
+        self.fsrs = Scheduler()
 
     async def get_due_cards(self, user_id: UUID, limit: int = 50) -> List[Card]:
         """Get cards due for review."""
