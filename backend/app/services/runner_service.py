@@ -356,52 +356,47 @@ class RunnerService:
         """
         logger.info(f"Generating reading notes for source {source.id}")
         
-        try:
-            lens = get_reading_notes_lens()
-            artifact = await self.run_lens(source_data, lens)
-            notes = artifact.content  # Should be list of {title, content}
-            
-            # Helper: Unpack if wrapped in a dict key (common LLM behavior)
-            if isinstance(notes, dict):
-                for key in ["notes", "sections", "parts", "content"]:
-                    if key in notes and isinstance(notes[key], list):
-                        notes = notes[key]
-                        break
+        lens = get_reading_notes_lens()
+        artifact = await self.run_lens(source_data, lens)
+        notes = artifact.content  # Should be list of {title, content}
+        
+        # Helper: Unpack if wrapped in a dict key (common LLM behavior)
+        if isinstance(notes, dict):
+            for key in ["notes", "sections", "parts", "content"]:
+                if key in notes and isinstance(notes[key], list):
+                    notes = notes[key]
+                    break
 
-            if not isinstance(notes, list):
-                raise ValueError(f"Reading notes lens returned non-list data: {type(notes)} - {str(notes)[:100]}...")
-            
-            # Create batch_id to link all notes together
-            batch_id = uuid_module.uuid4()
-            cards_created = 0
-            
-            for index, note in enumerate(notes, start=1):
-                if not isinstance(note, dict) or "title" not in note or "content" not in note:
-                    logger.warning(f"Skipping invalid note at index {index}: {note}")
-                    continue
-                    
-                card = Card(
-                    owner_id=source.user_id,
-                    source_material_id=source_material.id,
-                    type="reading_note",
-                    content={
-                        "question": note["title"],  # Descriptive headline
-                        "answer": note["content"],  # Markdown content
-                    },
-                    status=CardStatus.PENDING,
-                    batch_id=batch_id,
-                    batch_index=index,
-                )
-                self.db.add(card)
-                cards_created += 1
-            
-            if cards_created == 0:
-                raise ValueError("No valid reading notes could be generated from the lens output.")
+        if not isinstance(notes, list):
+            raise ValueError(f"Reading notes lens returned non-list data: {type(notes)} - {str(notes)[:100]}...")
+        
+        # Create batch_id to link all notes together
+        batch_id = uuid_module.uuid4()
+        cards_created = 0
+        
+        for index, note in enumerate(notes, start=1):
+            if not isinstance(note, dict) or "title" not in note or "content" not in note:
+                logger.warning(f"Skipping invalid note at index {index}: {note}")
+                continue
+                
+            card = Card(
+                owner_id=source.user_id,
+                source_material_id=source_material.id,
+                type="reading_note",
+                content={
+                    "question": note["title"],  # Descriptive headline
+                    "answer": note["content"],  # Markdown content
+                },
+                status=CardStatus.PENDING,
+                batch_id=batch_id,
+                batch_index=index,
+            )
+            self.db.add(card)
+            cards_created += 1
+        
+        if cards_created == 0:
+            raise ValueError("No valid reading notes could be generated from the lens output.")
 
-            await self.db.commit()
-            logger.info(f"Generated {cards_created} reading notes for source {source.id} with batch_id {batch_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to generate reading notes: {e}")
-            # Don't fail the entire source processing if reading notes fail
+        await self.db.commit()
+        logger.info(f"Generated {cards_created} reading notes for source {source.id} with batch_id {batch_id}")
 

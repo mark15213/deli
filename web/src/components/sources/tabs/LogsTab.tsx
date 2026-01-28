@@ -27,13 +27,27 @@ export function LogsTab({ sourceId }: LogsTabProps) {
     const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
+        let intervalId: NodeJS.Timeout | null = null
+
         async function fetchLogs() {
             try {
-                setLoading(true)
                 const res = await fetch(`/api/sources/${sourceId}/logs`)
                 if (!res.ok) throw new Error("Failed to fetch logs")
                 const data = await res.json()
                 setLogs(data)
+                setError(null)
+
+                // Check if there are any running logs
+                const hasRunningLogs = data.some((log: SourceLog) => log.status === "running")
+
+                // Set up polling: 3s if there are running logs, 10s otherwise
+                if (intervalId) {
+                    clearInterval(intervalId)
+                }
+
+                const pollInterval = hasRunningLogs ? 3000 : 10000
+                intervalId = setInterval(fetchLogs, pollInterval)
+
             } catch (e) {
                 setError(e instanceof Error ? e.message : "Unknown error")
             } finally {
@@ -42,7 +56,15 @@ export function LogsTab({ sourceId }: LogsTabProps) {
         }
 
         if (sourceId) {
+            setLoading(true)
             fetchLogs()
+        }
+
+        // Cleanup on unmount
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId)
+            }
         }
     }, [sourceId])
 
