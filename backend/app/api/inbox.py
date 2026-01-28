@@ -133,7 +133,7 @@ async def get_pending_by_source(
         group = groups[source_id]
         group["total_count"] += 1
         
-        if card.type == "note":
+        if card.type == "note" or card.type == "reading_note":
             group["notes_count"] += 1
         elif card.type == "flashcard":
             group["flashcards_count"] += 1

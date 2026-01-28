@@ -17,16 +17,24 @@ interface SourceCompareDrawerProps {
 export function SourceCompareDrawer({ isOpen, onClose, item, onProcessed }: SourceCompareDrawerProps) {
     const [processing, setProcessing] = useState(false)
     const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set())
+    const [cachedItem, setCachedItem] = useState<InboxSourceGroup | null>(item)
 
-    if (!item) return null
+    // Cache the item so we can display it while closing animation plays
+    if (item && item !== cachedItem) {
+        setCachedItem(item)
+    }
 
-    // Only pending cards can be selected for bulk actions
-    const pendingCards = item.cards.filter(c => c.status === "pending")
+    const displayItem = item || cachedItem
+
+    // Compute derived state safely
+    const pendingCards = displayItem?.cards.filter(c => c.status === "pending") || []
     const pendingCardIds = pendingCards.map(c => c.id)
     const allPendingSelected = selectedCards.size === pendingCardIds.length && pendingCardIds.length > 0
+    const hasPendingCards = pendingCards.length > 0
 
     const toggleCard = (cardId: string) => {
-        const card = item.cards.find(c => c.id === cardId)
+        if (!displayItem) return
+        const card = displayItem.cards.find(c => c.id === cardId)
         if (card?.status !== "pending") return // Can't select non-pending cards
 
         const newSet = new Set(selectedCards)
@@ -97,103 +105,105 @@ export function SourceCompareDrawer({ isOpen, onClose, item, onProcessed }: Sour
         }
     }
 
-    const hasPendingCards = pendingCards.length > 0
-
     return (
         <DetailPanel
             isOpen={isOpen}
             onClose={onClose}
             className="w-[600px] border-l shadow-2xl flex flex-col p-0 bg-background"
         >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
-                <div>
-                    <h2 className="text-lg font-semibold">{item.source_title}</h2>
-                    <p className="text-sm text-muted-foreground">
-                        {item.total_count} cards ({pendingCards.length} pending)
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleReject}
-                        disabled={processing || !hasPendingCards}
-                    >
-                        {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-                        Reject {selectedCards.size > 0 ? `(${selectedCards.size})` : `All (${pendingCards.length})`}
-                    </Button>
-                    <Button
-                        size="sm"
-                        className="gap-2"
-                        onClick={handleApprove}
-                        disabled={processing || !hasPendingCards}
-                    >
-                        {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                        Approve {selectedCards.size > 0 ? `(${selectedCards.size})` : `All (${pendingCards.length})`}
-                    </Button>
-                </div>
-            </div>
-
-            {/* Select All (only if pending cards exist) */}
-            {hasPendingCards && (
-                <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-3">
-                    <input
-                        type="checkbox"
-                        checked={allPendingSelected}
-                        onChange={toggleAll}
-                        className="h-4 w-4 rounded"
-                    />
-                    <span className="text-sm text-muted-foreground">
-                        {allPendingSelected ? 'Deselect all pending' : `Select all pending (${pendingCards.length})`}
-                    </span>
-                </div>
-            )}
-
-            {/* Cards List */}
-            <div className="flex-1 overflow-y-auto p-6">
-                <div className="space-y-3">
-                    {item.cards.map((card) => {
-                        const isPending = card.status === "pending"
-                        const isSelected = selectedCards.has(card.id)
-
-                        return (
-                            <div
-                                key={card.id}
-                                className={cn(
-                                    "border rounded-lg p-4 text-sm bg-card transition-colors",
-                                    isPending && "hover:border-primary/50 cursor-pointer",
-                                    isSelected && "border-primary ring-1 ring-primary/20",
-                                    !isPending && "opacity-60"
-                                )}
-                                onClick={() => isPending && toggleCard(card.id)}
+            {displayItem && (
+                <>
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
+                        <div>
+                            <h2 className="text-lg font-semibold">{displayItem.source_title}</h2>
+                            <p className="text-sm text-muted-foreground">
+                                {displayItem.total_count} cards ({pendingCards.length} pending)
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleReject}
+                                disabled={processing || !hasPendingCards}
                             >
-                                <div className="flex items-start gap-3">
-                                    {isPending && (
-                                        <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={() => toggleCard(card.id)}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="mt-1 h-4 w-4 rounded"
-                                        />
-                                    )}
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            {getCardIcon(card.type)}
-                                            <span className="text-xs uppercase text-muted-foreground font-medium">
-                                                {card.type}
-                                            </span>
-                                            {getStatusBadge(card.status)}
+                                {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                                Reject {selectedCards.size > 0 ? `(${selectedCards.size})` : `All (${pendingCards.length})`}
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="gap-2"
+                                onClick={handleApprove}
+                                disabled={processing || !hasPendingCards}
+                            >
+                                {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                Approve {selectedCards.size > 0 ? `(${selectedCards.size})` : `All (${pendingCards.length})`}
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Select All (only if pending cards exist) */}
+                    {hasPendingCards && (
+                        <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                checked={allPendingSelected}
+                                onChange={toggleAll}
+                                className="h-4 w-4 rounded"
+                            />
+                            <span className="text-sm text-muted-foreground">
+                                {allPendingSelected ? 'Deselect all pending' : `Select all pending (${pendingCards.length})`}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Cards List */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <div className="space-y-3">
+                            {displayItem.cards.map((card) => {
+                                const isPending = card.status === "pending"
+                                const isSelected = selectedCards.has(card.id)
+
+                                return (
+                                    <div
+                                        key={card.id}
+                                        className={cn(
+                                            "border rounded-lg p-4 text-sm bg-card transition-colors",
+                                            isPending && "hover:border-primary/50 cursor-pointer",
+                                            isSelected && "border-primary ring-1 ring-primary/20",
+                                            !isPending && "opacity-60"
+                                        )}
+                                        onClick={() => isPending && toggleCard(card.id)}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            {isPending && (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleCard(card.id)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="mt-1 h-4 w-4 rounded"
+                                                />
+                                            )}
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    {getCardIcon(card.type)}
+                                                    <span className="text-xs uppercase text-muted-foreground font-medium">
+                                                        {card.type}
+                                                    </span>
+                                                    {getStatusBadge(card.status)}
+                                                </div>
+                                                <p className="text-foreground">{card.question}</p>
+                                            </div>
                                         </div>
-                                        <p className="text-foreground">{card.question}</p>
                                     </div>
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
-            </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                </>
+            )}
         </DetailPanel>
     )
 }

@@ -23,4 +23,6 @@ from app.api.sources import router as sources_router
 api_router.include_router(sources_router)
 from app.api.paper import router as paper_router
 api_router.include_router(paper_router)
+from app.api.cards import router as cards_router
+api_router.include_router(cards_router)
 

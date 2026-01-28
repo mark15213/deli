@@ -1,6 +1,6 @@
 # SQLAlchemy models for the application
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
 from typing import Optional, List
 
@@ -148,6 +148,10 @@ class Card(Base):
     status: Mapped[CardStatus] = mapped_column(Enum(CardStatus), default=CardStatus.PENDING)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     
+    # Batch grouping for series notes (e.g., paper reading notes)
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    batch_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     # Relationships
@@ -250,3 +254,37 @@ class Source(Base):
     # Relationships
     user: Mapped["User"] = relationship(back_populates="sources")
     source_materials: Mapped[List["SourceMaterial"]] = relationship(back_populates="source")
+    logs: Mapped[List["SourceLog"]] = relationship(back_populates="source", cascade="all, delete-orphan")
+
+
+class SourceLog(Base):
+    """
+    Logs for Source processing events (lens runs, syncs, errors).
+    """
+    __tablename__ = "source_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), index=True)
+    
+    # Event type: 'lens_started', 'lens_completed', 'lens_failed', 'sync_started', 'sync_completed', 'error'
+    event_type: Mapped[str] = mapped_column(String(50))
+    
+    # Lens key if applicable (e.g., 'default_summary', 'reading_notes')
+    lens_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    # Status: 'running', 'completed', 'failed'
+    status: Mapped[str] = mapped_column(String(20))
+    
+    # Message/details
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Duration in milliseconds
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    
+    # Additional data (token usage, etc.)
+    extra_data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    source: Mapped["Source"] = relationship(back_populates="logs")

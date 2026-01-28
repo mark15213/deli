@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.lens import SourceData, Lens, Artifact
-from app.models.models import Source, SourceMaterial
-from app.lenses.registry import get_default_summary_lens, get_profiler_lens
+from app.models.models import Source, SourceMaterial, Card, CardStatus, SourceLog
+from app.lenses.registry import get_default_summary_lens, get_profiler_lens, get_reading_notes_lens
+import uuid as uuid_module
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,31 @@ class RunnerService:
             base_url=base_url,
             api_key=api_key
         )
+
+    async def _log_event(
+        self,
+        source_id: UUID,
+        event_type: str,
+        status: str,
+        lens_key: str = None,
+        message: str = None,
+        duration_ms: int = None,
+        extra_data: dict = None
+    ):
+        """
+        Log a source processing event.
+        """
+        log = SourceLog(
+            source_id=source_id,
+            event_type=event_type,
+            status=status,
+            lens_key=lens_key,
+            message=message,
+            duration_ms=duration_ms,
+            extra_data=extra_data or {}
+        )
+        self.db.add(log)
+        # Don't commit here - let caller handle transaction
 
     async def run_lens(self, source_data: SourceData, lens: Lens) -> Artifact:
         """
@@ -155,11 +181,23 @@ class RunnerService:
             logger.error(f"Source {source_id} not found")
             return
 
+        # Log start of processing (Sync Started)
+        await self._log_event(source.id, "sync_started", "running", message="Starting source processing")
+        await self.db.commit()
+
         # 2. Extract Content (Text or Base64)
-        fetched_content = await self._fetch_source_content(source)
-        
+        try:
+            fetched_content = await self._fetch_source_content(source)
+        except Exception as e:
+            await self._log_event(source.id, "error", "failed", message=f"Unexpected error fetching content: {str(e)}")
+            await self.db.commit()
+            return
+
         if not fetched_content:
-            logger.warning(f"No content extracted for source {source_id}")
+            msg = f"No content extracted for source {source_id}. Check URL validity."
+            logger.warning(msg)
+            await self._log_event(source.id, "error", "failed", message=msg)
+            await self.db.commit()
             return
             
         # 3. Create SourceData
@@ -172,32 +210,43 @@ class RunnerService:
         )
         
         # 4. Run Default Summary Lens
-        # Default Summary Lens expects {text}. If we give it a PDF, we might need to adjust the prompt or Lens.
-        # But our new run_lens handles the substitution of {text} -> "this document" if text is missing.
         summary_lens = get_default_summary_lens()
+        start_time = time.time()
+        await self._log_event(source.id, "lens_started", "running", lens_key="default_summary", message="Starting summary generation")
         try:
             summary_artifact = await self.run_lens(source_data, summary_lens)
+            duration_ms = int((time.time() - start_time) * 1000)
+            await self._log_event(source.id, "lens_completed", "completed", lens_key="default_summary", 
+                                 message="Summary generated successfully", duration_ms=duration_ms)
         except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            await self._log_event(source.id, "lens_failed", "failed", lens_key="default_summary",
+                                 message=str(e), duration_ms=duration_ms)
             logger.error(f"Lens summary failed: {e}")
             summary_artifact = Artifact(lens_key="default_summary", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
         
         # 5. Run Profiler Lens
         profiler_lens = get_profiler_lens()
+        start_time = time.time()
+        await self._log_event(source.id, "lens_started", "running", lens_key="profiler_meta", message="Starting lens profiling")
         try:
             profiler_artifact = await self.run_lens(source_data, profiler_lens)
+            duration_ms = int((time.time() - start_time) * 1000)
+            await self._log_event(source.id, "lens_completed", "completed", lens_key="profiler_meta",
+                                 message="Lens suggestions generated", duration_ms=duration_ms)
         except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            await self._log_event(source.id, "lens_failed", "failed", lens_key="profiler_meta",
+                                 message=str(e), duration_ms=duration_ms)
             logger.error(f"Lens profiler failed: {e}")
             profiler_artifact = Artifact(lens_key="profiler_meta", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
         
         # 6. Persist to SourceMaterial
-        # Find existing or create
         stmt_mat = select(SourceMaterial).where(SourceMaterial.source_id == source.id)
         res_mat = await self.db.execute(stmt_mat)
         source_material = res_mat.scalars().first()
         
         if not source_material:
-            # Check if one exists with same external_id (re-ingestion) to avoid unique constraint error
-            # uq_source_user_extid
             external_id = source.connection_config.get("url", "unknown")
             stmt_exist = select(SourceMaterial).where(
                 SourceMaterial.user_id == source.user_id,
@@ -207,14 +256,10 @@ class RunnerService:
             existing_material = res_exist.scalars().first()
             
             if existing_material:
-                logger.info(f"Fonud existing material used by another source, re-linking to source {source.id}")
+                logger.info(f"Found existing material used by another source, re-linking to source {source.id}")
                 source_material = existing_material
-                # Re-link? Or just update content? 
-                # If we re-link, the old source loses its material reference (if 1:1). 
-                # But since we are creating new source every time, this is likely what we want.
                 source_material.source_id = source.id
             else:
-                # Create new
                  source_material = SourceMaterial(
                     user_id=source.user_id,
                     source_id=source.id,
@@ -225,16 +270,30 @@ class RunnerService:
                  self.db.add(source_material)
         
         # Update rich_data
-        # Ensure dict exists
         if source_material.rich_data is None:
             source_material.rich_data = {}
             
-        # We need to clone the dict to ensure SQLAlchemy detects change if it's mutable
         new_data = dict(source_material.rich_data)
         new_data["summary"] = summary_artifact.content
         new_data["suggestions"] = profiler_artifact.content
         
         source_material.rich_data = new_data
+        
+        await self.db.commit()
+        
+        # 7. For paper sources, generate reading notes cards
+        if self._is_paper_source(source):
+            start_time = time.time()
+            await self._log_event(source.id, "lens_started", "running", lens_key="reading_notes", message="Generating reading notes")
+            try:
+                await self._generate_reading_notes(source, source_data, source_material)
+                duration_ms = int((time.time() - start_time) * 1000)
+                await self._log_event(source.id, "lens_completed", "completed", lens_key="reading_notes",
+                                     message="Reading notes generated", duration_ms=duration_ms)
+            except Exception as e:
+                duration_ms = int((time.time() - start_time) * 1000)
+                await self._log_event(source.id, "lens_failed", "failed", lens_key="reading_notes",
+                                     message=str(e), duration_ms=duration_ms)
         
         await self.db.commit()
         logger.info(f"Finished processing source {source_id}")
@@ -278,3 +337,71 @@ class RunnerService:
                 return {}
         
         return {}
+
+    def _is_paper_source(self, source: Source) -> bool:
+        """
+        Detect if the source is an academic paper (arxiv, etc.).
+        """
+        url = source.connection_config.get("url", "") or ""
+        # Detect arxiv papers
+        if "arxiv.org" in url:
+            return True
+        # Can extend to detect other paper sources (semanticscholar, etc.)
+        return False
+
+    async def _generate_reading_notes(self, source: Source, source_data: SourceData, source_material: SourceMaterial):
+        """
+        Generate reading notes cards from a paper source.
+        Creates 9 structured notes with batch_id linking them together.
+        """
+        logger.info(f"Generating reading notes for source {source.id}")
+        
+        try:
+            lens = get_reading_notes_lens()
+            artifact = await self.run_lens(source_data, lens)
+            notes = artifact.content  # Should be list of {title, content}
+            
+            # Helper: Unpack if wrapped in a dict key (common LLM behavior)
+            if isinstance(notes, dict):
+                for key in ["notes", "sections", "parts", "content"]:
+                    if key in notes and isinstance(notes[key], list):
+                        notes = notes[key]
+                        break
+
+            if not isinstance(notes, list):
+                raise ValueError(f"Reading notes lens returned non-list data: {type(notes)} - {str(notes)[:100]}...")
+            
+            # Create batch_id to link all notes together
+            batch_id = uuid_module.uuid4()
+            cards_created = 0
+            
+            for index, note in enumerate(notes, start=1):
+                if not isinstance(note, dict) or "title" not in note or "content" not in note:
+                    logger.warning(f"Skipping invalid note at index {index}: {note}")
+                    continue
+                    
+                card = Card(
+                    owner_id=source.user_id,
+                    source_material_id=source_material.id,
+                    type="reading_note",
+                    content={
+                        "question": note["title"],  # Descriptive headline
+                        "answer": note["content"],  # Markdown content
+                    },
+                    status=CardStatus.PENDING,
+                    batch_id=batch_id,
+                    batch_index=index,
+                )
+                self.db.add(card)
+                cards_created += 1
+            
+            if cards_created == 0:
+                raise ValueError("No valid reading notes could be generated from the lens output.")
+
+            await self.db.commit()
+            logger.info(f"Generated {cards_created} reading notes for source {source.id} with batch_id {batch_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate reading notes: {e}")
+            # Don't fail the entire source processing if reading notes fail
+

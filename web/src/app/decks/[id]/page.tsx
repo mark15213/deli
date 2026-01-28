@@ -10,6 +10,7 @@ import { ArrowLeft, Play, Star, MoreHorizontal, Settings, Trash2, Loader2, FileT
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { getDeck, subscribeToDeck, unsubscribeFromDeck, type DeckDetail, type CardInDeck } from "@/lib/api/decks"
+import { removeCardFromDeck } from "@/lib/api/inbox"
 
 // Helper to map API card to UI card
 function mapApiCardToUiCard(card: CardInDeck): Card {
@@ -34,6 +35,7 @@ export default function DeckDetailPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [isSubscribed, setIsSubscribed] = useState(false)
+    const [isEditing, setIsEditing] = useState(false)
 
     useEffect(() => {
         const fetchDeck = async () => {
@@ -65,6 +67,25 @@ export default function DeckDetailPage() {
             setIsSubscribed(checked)
         } catch (err) {
             console.error("Failed to update subscription:", err)
+        }
+    }
+
+    const handleDeleteCard = async (cardId: string) => {
+        if (!confirm("Are you sure you want to remove this card from the deck?")) return;
+
+        try {
+            await removeCardFromDeck(cardId, deckId);
+            // Update local state
+            if (deck) {
+                setDeck({
+                    ...deck,
+                    cards: deck.cards.filter(c => c.id !== cardId),
+                    card_count: deck.card_count - 1
+                });
+            }
+        } catch (err) {
+            console.error("Failed to remove card:", err);
+            alert("Failed to remove card");
         }
     }
 
@@ -148,7 +169,11 @@ export default function DeckDetailPage() {
                                 />
                             </div>
 
-                            <Button variant="ghost" size="icon">
+                            <Button
+                                variant={isEditing ? "secondary" : "ghost"}
+                                size="icon"
+                                onClick={() => setIsEditing(!isEditing)}
+                            >
                                 <Settings className="h-4 w-4" />
                             </Button>
                             <Button variant="ghost" size="icon" className="text-destructive">
@@ -178,6 +203,8 @@ export default function DeckDetailPage() {
                         onCardClick={(cardId) => {
                             console.log("Card clicked:", cardId)
                         }}
+                        onDeleteCard={isEditing ? handleDeleteCard : undefined}
+                        isEditing={isEditing}
                     />
                 ) : (
                     <div className="text-center py-12 text-muted-foreground">

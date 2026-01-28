@@ -39,6 +39,10 @@ class StudyCard(BaseModel):
     source_title: Optional[str] = None
     deck_ids: List[UUID] = []
     deck_titles: List[str] = []
+    # Batch info for series notes (paper reading notes)
+    batch_id: Optional[UUID] = None
+    batch_index: Optional[int] = None
+    batch_total: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -114,6 +118,7 @@ router = APIRouter(prefix="/study", tags=["study"])
 @router.get("/queue", response_model=List[StudyCard])
 async def get_study_queue(
     limit: int = Query(20, ge=1, le=100),
+    deck_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -127,19 +132,48 @@ async def get_study_queue(
     sub_result = await db.execute(sub_stmt)
     subscribed_deck_ids = [row[0] for row in sub_result.fetchall()]
     
-    if not subscribed_deck_ids:
+    target_deck_ids = []
+    
+    if deck_id:
+        # Check if user is subscribed to the requested deck
+        if deck_id not in subscribed_deck_ids:
+             # Or maybe they are the owner? Owner automatically subscribed? 
+             # For now, require subscription for study
+             # Actually, let's allow if they are owner too even if not subscribed explicitly (though owner is usually subscribed)
+             # But strictly, subscription drives study queue.
+             pass
+        
+        # We will filter by this deck_id, but we should make sure it's a valid ID for this user (subscribed)
+        if deck_id in subscribed_deck_ids:
+            target_deck_ids = [deck_id]
+        else:
+            # If not subscribed, return empty or error? 
+            # Let's return empty to be safe, or check if they are owner. 
+            pass
+            
+        # Simplified: Just trust the filter. If not subscribed, logic below might return nothing if we restrict to subscribed.
+        # But wait, original logic was: Deck.id.in_(subscribed_deck_ids). 
+        # So we just need to intersect.
+        if deck_id in subscribed_deck_ids:
+            target_deck_ids = [deck_id]
+        else:
+             return []
+    else:
+        target_deck_ids = subscribed_deck_ids
+
+    if not target_deck_ids:
         return []
     
     # Get cards that are due for review
     # Include: cards with no progress (new), or cards where due_date <= now
     
-    # First, get cards from subscribed decks that are ACTIVE
+    # First, get cards from decks that are ACTIVE
     # Using distinct ensures we don't get duplicates if card is in multiple subscribed decks
     cards_stmt = (
         select(Card)
         .join(Card.decks)
         .where(
-            Deck.id.in_(subscribed_deck_ids),
+            Deck.id.in_(target_deck_ids),
             Card.status == CardStatus.ACTIVE,
         )
         .options(selectinload(Card.decks))
@@ -149,6 +183,15 @@ async def get_study_queue(
     cards_result = await db.execute(cards_stmt)
     all_cards = cards_result.scalars().all()
     
+    # Sort cards to ensure reading notes (batches) appear in order
+    # We sort by batch_id to group them, then by batch_index to order them.
+    # Non-batched cards will have batch_id=None and appear as a group (or scattered if we don't handle None well, but None!=UUID so they group).
+    # We use 'None' or empty string for None batch_id.
+    all_cards = sorted(
+        all_cards, 
+        key=lambda c: (str(c.batch_id) if c.batch_id else '', c.batch_index if c.batch_index is not None else 0)
+    )
+
     # Get existing study progress for these cards
     card_ids = [c.id for c in all_cards]
     progress_stmt = select(StudyProgress).where(
@@ -172,6 +215,18 @@ async def get_study_queue(
         if len(due_cards) >= limit:
             break
     
+    # Calculate batch_total for cards with batch_id
+    batch_totals = {}
+    batch_ids_to_query = set(c.batch_id for c in due_cards if c.batch_id)
+    if batch_ids_to_query:
+        batch_count_stmt = (
+            select(Card.batch_id, func.count(Card.id))
+            .where(Card.batch_id.in_(batch_ids_to_query))
+            .group_by(Card.batch_id)
+        )
+        batch_result = await db.execute(batch_count_stmt)
+        batch_totals = {row[0]: row[1] for row in batch_result.fetchall()}
+    
     # Build response
     return [
         StudyCard(
@@ -185,6 +240,9 @@ async def get_study_queue(
             source_title=None,
             deck_ids=[d.id for d in card.decks],
             deck_titles=[d.title for d in card.decks],
+            batch_id=card.batch_id,
+            batch_index=card.batch_index,
+            batch_total=batch_totals.get(card.batch_id) if card.batch_id else None,
         )
         for card in due_cards
     ]
@@ -383,4 +441,70 @@ async def get_study_stats(
         streak_days=streak_days,
         total_mastered=total_mastered,
         total_cards=total_cards,
+    )
+
+
+class SkipBatchResponse(BaseModel):
+    status: str
+    batch_id: UUID
+    cards_skipped: int
+
+
+@router.post("/skip-batch/{batch_id}", response_model=SkipBatchResponse)
+async def skip_batch(
+    batch_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Skip all cards in a batch (mark as permanently skipped).
+    Used for skipping entire paper reading note series.
+    """
+    # Get all cards in this batch owned by the user
+    stmt = (
+        select(Card)
+        .where(
+            Card.batch_id == batch_id,
+            Card.owner_id == current_user.id,
+        )
+    )
+    result = await db.execute(stmt)
+    cards = result.scalars().all()
+    
+    if not cards:
+        raise HTTPException(status_code=404, detail="Batch not found or no access")
+    
+    skipped_count = 0
+    for card in cards:
+        # Get or create study progress
+        progress_stmt = select(StudyProgress).where(
+            StudyProgress.user_id == current_user.id,
+            StudyProgress.card_id == card.id,
+        )
+        progress_result = await db.execute(progress_stmt)
+        progress = progress_result.scalar_one_or_none()
+        
+        if not progress:
+            # Create new progress entry
+            progress = StudyProgress(
+                user_id=current_user.id,
+                card_id=card.id,
+                stability=0.0,
+                difficulty=0.0,
+                state=FSRSState.REVIEW,
+            )
+            db.add(progress)
+        
+        # Mark as permanently skipped by setting very far future due date
+        progress.state = FSRSState.REVIEW
+        progress.due_date = datetime(9999, 12, 31, tzinfo=timezone.utc)  # Far future = never show
+        progress.last_review_at = datetime.now(timezone.utc)
+        skipped_count += 1
+    
+    await db.commit()
+    
+    return SkipBatchResponse(
+        status="skipped",
+        batch_id=batch_id,
+        cards_skipped=skipped_count,
     )

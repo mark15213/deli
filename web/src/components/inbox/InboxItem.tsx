@@ -94,7 +94,10 @@ export function InboxItem({
             {/* Main Row */}
             <div
                 className="flex items-start gap-4 p-4 cursor-pointer hover:bg-muted/50"
-                onClick={onClick}
+                onClick={(e) => {
+                    e.stopPropagation()
+                    onClick()
+                }}
             >
                 {/* Left: Source Icon */}
                 <div className="mt-1">

@@ -3,15 +3,18 @@
 import { Button } from "@/components/ui/button"
 import { BookmarkPlus, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface NoteCardProps {
+    title?: string
     content: string
     source?: string
     onMarkRead: () => void
     onClip?: () => void
 }
 
-export function NoteCard({ content, source, onMarkRead, onClip }: NoteCardProps) {
+export function NoteCard({ title, content, source, onMarkRead, onClip }: NoteCardProps) {
     return (
         <div className="flex flex-col h-full">
             {/* Content Area - Instagram Story style */}
@@ -27,11 +30,18 @@ export function NoteCard({ content, source, onMarkRead, onClip }: NoteCardProps)
                     )}
 
                     {/* Main content - clean typography */}
-                    <div className="bg-card border rounded-2xl p-8 shadow-lg">
-                        <div className="prose dark:prose-invert prose-lg max-w-none">
-                            <p className="text-xl leading-relaxed font-medium text-center">
-                                "{content}"
-                            </p>
+                    <div className="bg-card border rounded-2xl p-8 shadow-lg overflow-y-auto max-h-[60vh]">
+                        {title && (
+                            <h2 className="text-2xl font-bold mb-4 text-center">{title}</h2>
+                        )}
+                        <div className={cn(
+                            "prose dark:prose-invert max-w-none",
+                            // Adjust prose style based on whether it is a short quote or a long note
+                            content.length < 100 && !title ? "prose-lg text-center font-medium" : "prose-base leading-relaxed text-left"
+                        )}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {content}
+                            </ReactMarkdown>
                         </div>
                     </div>
                 </div>

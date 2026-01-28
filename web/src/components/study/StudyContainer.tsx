@@ -6,16 +6,18 @@ import { NoteCard } from "./NoteCard"
 import { FlashcardView } from "./FlashcardView"
 import { QuizCard } from "./QuizCard"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, X } from "lucide-react"
+import { ArrowLeft, X, SkipForward } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
+import { skipBatch } from "@/lib/api/study"
 
-type CardType = "note" | "flashcard" | "quiz"
+type CardType = "note" | "flashcard" | "quiz" | "reading_note"
 
 interface StudyCard {
     id: string
     type: CardType
     content: string
+    title?: string
     answer?: string
     source?: string
     sourceUrl?: string
@@ -23,17 +25,23 @@ interface StudyCard {
     options?: Array<{ id: string; text: string; isCorrect: boolean }>
     correctAnswer?: string
     explanation?: string
+    // Batch info for reading notes
+    batch_id?: string
+    batch_index?: number
+    batch_total?: number
 }
 
 interface StudyContainerProps {
     cards: StudyCard[]
     deckTitle?: string
     onComplete?: () => void
+    onBatchSkipped?: (batchId: string) => void
 }
 
-export function StudyContainer({ cards, deckTitle = "Learning Session", onComplete }: StudyContainerProps) {
+export function StudyContainer({ cards, deckTitle = "Learning Session", onComplete, onBatchSkipped }: StudyContainerProps) {
     const [currentIndex, setCurrentIndex] = useState(0)
     const [completedCards, setCompletedCards] = useState<string[]>([])
+    const [skippingBatch, setSkippingBatch] = useState(false)
 
     const currentCard = cards[currentIndex]
     const remaining = cards.length - currentIndex
@@ -63,6 +71,32 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
         goToNextCard()
     }
 
+    const handleSkipBatch = async () => {
+        if (!currentCard.batch_id) return
+
+        setSkippingBatch(true)
+        try {
+            await skipBatch(currentCard.batch_id)
+            onBatchSkipped?.(currentCard.batch_id)
+
+            // Skip to next card that is not in this batch
+            const nextNonBatchIndex = cards.findIndex(
+                (card, idx) => idx > currentIndex && card.batch_id !== currentCard.batch_id
+            )
+
+            if (nextNonBatchIndex !== -1) {
+                setCurrentIndex(nextNonBatchIndex)
+            } else {
+                // No more cards outside this batch
+                onComplete?.()
+            }
+        } catch (error) {
+            console.error("Failed to skip batch:", error)
+        } finally {
+            setSkippingBatch(false)
+        }
+    }
+
     if (!currentCard) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-center p-8">
@@ -78,6 +112,9 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
         )
     }
 
+    // Check if current card is part of a batch (reading notes series)
+    const isReadingNote = currentCard.type === "reading_note" && currentCard.batch_id
+
     return (
         <div className="h-full flex flex-col bg-background">
             {/* Top Bar */}
@@ -89,8 +126,29 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                 </Link>
                 <div className="flex-1">
                     <h1 className="font-semibold text-sm">{deckTitle}</h1>
+                    {/* Batch indicator for reading notes */}
+                    {isReadingNote && (
+                        <p className="text-xs text-muted-foreground">
+                            Note {currentCard.batch_index} of {currentCard.batch_total}
+                        </p>
+                    )}
                 </div>
                 <StudyProgress remaining={remaining} total={cards.length} className="flex-1 max-w-xs" />
+
+                {/* Skip Series button for reading notes */}
+                {isReadingNote && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSkipBatch}
+                        disabled={skippingBatch}
+                        className="gap-1"
+                    >
+                        <SkipForward className="h-3 w-3" />
+                        Skip Series
+                    </Button>
+                )}
+
                 <Link href="/decks">
                     <Button variant="ghost" size="icon">
                         <X className="h-4 w-4" />
@@ -104,8 +162,9 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                     "h-full transition-all duration-300",
                     "animate-in fade-in slide-in-from-right-4"
                 )} key={currentCard.id}>
-                    {currentCard.type === "note" && (
+                    {(currentCard.type === "note" || currentCard.type === "reading_note") && (
                         <NoteCard
+                            title={currentCard.title}
                             content={currentCard.content}
                             source={currentCard.source}
                             onMarkRead={handleNoteRead}

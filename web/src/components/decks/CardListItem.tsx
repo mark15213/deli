@@ -2,7 +2,7 @@
 
 import { TypeIcon, ContentType } from "@/components/shared/TypePill"
 import { cn } from "@/lib/utils"
-import { CheckCircle, Circle, ChevronRight } from "lucide-react"
+import { CheckCircle, Circle, ChevronRight, Trash2 } from "lucide-react"
 
 interface CardListItemProps {
     id: string
@@ -10,9 +10,11 @@ interface CardListItemProps {
     content: string
     isMastered?: boolean
     onClick?: () => void
+    onDelete?: () => void
+    isEditing?: boolean
 }
 
-export function CardListItem({ id, type, content, isMastered, onClick }: CardListItemProps) {
+export function CardListItem({ id, type, content, isMastered, onClick, onDelete, isEditing }: CardListItemProps) {
     return (
         <div
             className={cn(
@@ -39,6 +41,22 @@ export function CardListItem({ id, type, content, isMastered, onClick }: CardLis
                 ) : (
                     <Circle className="h-4 w-4 text-muted-foreground/40" />
                 )}
+
+                {onDelete && (
+                    <button
+                        className={cn(
+                            "p-1 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all",
+                            isEditing ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        )}
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onDelete()
+                        }}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </button>
+                )}
+
                 <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
         </div>
@@ -55,9 +73,11 @@ export interface Card {
 interface CardListProps {
     cards: Card[]
     onCardClick?: (cardId: string) => void
+    onDeleteCard?: (cardId: string) => void
+    isEditing?: boolean
 }
 
-export function CardList({ cards, onCardClick }: CardListProps) {
+export function CardList({ cards, onCardClick, onDeleteCard, isEditing }: CardListProps) {
     return (
         <div className="space-y-2">
             {cards.map((card) => (
@@ -65,6 +85,8 @@ export function CardList({ cards, onCardClick }: CardListProps) {
                     key={card.id}
                     {...card}
                     onClick={() => onCardClick?.(card.id)}
+                    onDelete={onDeleteCard ? () => onDeleteCard(card.id) : undefined}
+                    isEditing={isEditing}
                 />
             ))}
         </div>

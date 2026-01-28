@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { StudyContainer } from "@/components/study/StudyContainer"
 import { getStudyQueue, submitReview, type StudyCard as ApiStudyCard, type Rating } from "@/lib/api/study"
 import { Loader2 } from "lucide-react"
@@ -13,11 +14,18 @@ function mapApiCardToStudyCard(card: ApiStudyCard) {
         sourceUrl: undefined,
     }
 
-    if (card.type === "note") {
+    if (card.type === "note" || card.type === "reading_note") {
         return {
             ...baseCard,
-            type: "note" as const,
-            content: card.question,
+            // Map "reading_note" to "reading_note", otherwise "note"
+            type: (card.type === "reading_note" ? "reading_note" : "note") as "reading_note" | "note",
+            // For reading_note: title is question(headline), content is answer(body)
+            // For note: content is question(text), title is undefined
+            title: card.type === "reading_note" ? card.question : undefined,
+            content: (card.type === "reading_note" && card.answer) ? card.answer : card.question,
+            batch_id: card.batch_id,
+            batch_index: card.batch_index,
+            batch_total: card.batch_total,
         }
     } else if (card.type === "flashcard" || card.type === "qa") {
         return {
@@ -28,36 +36,38 @@ function mapApiCardToStudyCard(card: ApiStudyCard) {
         }
     } else {
         // Quiz types: mcq, cloze, true_false
-        const isClozе = card.type === "cloze"
+        const isCloze = card.type === "cloze"
         return {
             ...baseCard,
             type: "quiz" as const,
             content: card.question,
-            quizType: isClozе ? "cloze" as const : "mcq" as const,
+            quizType: isCloze ? "cloze" as const : "mcq" as const,
             options: card.options?.map((opt, i) => ({
                 id: String.fromCharCode(97 + i),
                 text: opt,
                 isCorrect: opt === card.answer,
             })),
-            correctAnswer: isClozе ? card.answer : undefined,
+            correctAnswer: isCloze ? card.answer : undefined,
             explanation: card.explanation,
         }
     }
 }
 
 export default function StudyPage() {
+    const searchParams = useSearchParams()
+    const deckId = searchParams.get("deck")
     const [cards, setCards] = useState<ReturnType<typeof mapApiCardToStudyCard>[]>([])
     const [loading, setLoading] = useState(true)
     const [deckTitle, setDeckTitle] = useState("Study Queue")
 
     useEffect(() => {
         fetchStudyQueue()
-    }, [])
+    }, [deckId])
 
     const fetchStudyQueue = async () => {
         try {
             setLoading(true)
-            const apiCards = await getStudyQueue(20)
+            const apiCards = await getStudyQueue(20, deckId || undefined)
             const mappedCards = apiCards.map(mapApiCardToStudyCard)
             setCards(mappedCards)
             if (apiCards.length > 0) {

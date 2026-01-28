@@ -191,7 +191,10 @@ export default function InboxPage() {
     const totalCards = items.reduce((sum, item) => sum + item.total_count, 0)
 
     return (
-        <div className="flex h-full bg-background relative">
+        <div
+            className="flex h-full bg-background relative"
+            onClick={() => setSelectedItem(null)}
+        >
             {/* List Section */}
             <div className="flex-1 flex flex-col min-w-0">
                 <div className="px-8 py-6 border-b bg-card">

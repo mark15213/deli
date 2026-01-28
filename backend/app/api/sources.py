@@ -247,3 +247,52 @@ async def upload_document(
         "cards": created_cards,
     }
 
+
+from pydantic import BaseModel
+from datetime import datetime
+from app.models.models import SourceLog
+
+class SourceLogResponse(BaseModel):
+    id: UUID
+    source_id: UUID
+    event_type: str
+    lens_key: Optional[str]
+    status: str
+    message: Optional[str]
+    duration_ms: Optional[int]
+    extra_data: dict
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/{source_id}/logs", response_model=List[SourceLogResponse])
+async def get_source_logs(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_id: UUID,
+    current_user: User = Depends(deps.get_mock_user),
+    limit: int = 50,
+) -> Any:
+    """
+    Get processing logs for a source.
+    """
+    # Verify source exists and belongs to user
+    source_stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    source_result = await db.execute(source_stmt)
+    source = source_result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    # Fetch logs
+    logs_stmt = (
+        select(SourceLog)
+        .where(SourceLog.source_id == source_id)
+        .order_by(SourceLog.created_at.desc())
+        .limit(limit)
+    )
+    logs_result = await db.execute(logs_stmt)
+    logs = logs_result.scalars().all()
+    
+    return logs

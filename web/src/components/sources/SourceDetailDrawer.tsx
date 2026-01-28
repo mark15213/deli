@@ -233,7 +233,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                         </TabsContent>
 
                         <TabsContent value="logs">
-                            <div className="text-sm text-muted-foreground">Logs not implemented.</div>
+                            {source && <LogsTab sourceId={source.id} />}
                         </TabsContent>
                     </div>
                 </Tabs>
