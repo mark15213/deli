@@ -81,9 +81,9 @@ export default function DecksPage() {
             <div className="px-8 py-6 border-b bg-card">
                 <div className="flex items-center justify-between mb-4">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight">My Library</h1>
+                        <h1 className="text-2xl font-bold tracking-tight">Decks</h1>
                         <p className="text-muted-foreground mt-1">
-                            {decks.length} decks • {totalCards} cards • {subscribedCount} subscribed
+                            {decks.length} decks • {totalCards} cards
                         </p>
                     </div>
                     <Button className="gap-2">

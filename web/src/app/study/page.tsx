@@ -61,7 +61,7 @@ export default function StudyPage() {
             const mappedCards = apiCards.map(mapApiCardToStudyCard)
             setCards(mappedCards)
             if (apiCards.length > 0) {
-                setDeckTitle(apiCards[0].deck_titles[0] || "Study Session")
+                setDeckTitle(apiCards[0].deck_titles[0] || "Learning Session")
             }
         } catch (error) {
             console.error("Failed to fetch study queue:", error)

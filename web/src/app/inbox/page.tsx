@@ -197,8 +197,8 @@ export default function InboxPage() {
                 <div className="px-8 py-6 border-b bg-card">
                     <div className="flex items-center justify-between mb-4">
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight">Insight Inbox</h1>
-                            <p className="text-muted-foreground mt-1">Review and process AI-generated knowledge assets</p>
+                            <h1 className="text-2xl font-bold tracking-tight">Inbox</h1>
+                            <p className="text-muted-foreground mt-1">Review and organize new cards</p>
                         </div>
                         <div className="flex items-center gap-4">
                             <Button onClick={() => setShowImportModal(true)} variant="outline" className="gap-2">

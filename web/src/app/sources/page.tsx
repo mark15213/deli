@@ -52,8 +52,8 @@ export default function SourcesPage() {
         <div className="flex flex-col h-full bg-slate-50/50 dark:bg-zinc-950 relative">
             <div className="flex items-center justify-between px-8 py-6 border-b bg-card">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Source Hub</h1>
-                    <p className="text-muted-foreground mt-1">Manage all your knowledge inputs and connections</p>
+                    <h1 className="text-2xl font-bold tracking-tight">Feed</h1>
+                    <p className="text-muted-foreground mt-1">Your content sources and subscriptions</p>
                 </div>
                 <QuickAddModal onSourceAdded={loadSources} />
             </div>

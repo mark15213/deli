@@ -8,8 +8,8 @@ import {
     Brain,
     Flame,
     Inbox,
-    Library,
-    Plus,
+    Layers,
+    Rss,
     TrendingUp,
     Zap,
     Clock,
@@ -201,7 +201,7 @@ export default function DashboardPage() {
                         <Link href="/study">
                             <Button size="lg" className="gap-2 shadow-lg hover:shadow-xl transition-shadow">
                                 <Zap className="h-5 w-5" />
-                                Start Studying
+                                Start Learning
                             </Button>
                         </Link>
                     </div>
@@ -252,7 +252,7 @@ export default function DashboardPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <QuickAction
                                     icon={Brain}
-                                    title="Start Study Session"
+                                    title="Start Learning"
                                     description={`${stats?.today_remaining || 0} cards due today`}
                                     href="/study"
                                     color="bg-blue-500/10 text-blue-500"
@@ -265,16 +265,16 @@ export default function DashboardPage() {
                                     color="bg-purple-500/10 text-purple-500"
                                 />
                                 <QuickAction
-                                    icon={Library}
-                                    title="Browse Library"
+                                    icon={Layers}
+                                    title="Browse Decks"
                                     description={`${decks.length} decks, ${totalCards} cards`}
                                     href="/decks"
                                     color="bg-green-500/10 text-green-500"
                                 />
                                 <QuickAction
-                                    icon={Plus}
-                                    title="Add New Source"
-                                    description="Import from Twitter, Notion, etc."
+                                    icon={Rss}
+                                    title="Manage Feed"
+                                    description="Connect Twitter, Notion, etc."
                                     href="/sources"
                                     color="bg-orange-500/10 text-orange-500"
                                 />

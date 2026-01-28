@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Radio, Inbox, GraduationCap, ChevronLeft, ChevronRight, Library } from "lucide-react"
+import { Home, Rss, Inbox, Layers, Brain, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
@@ -10,19 +10,14 @@ import { ThemeToggle } from "@/components/shared/ThemeToggle"
 
 const sidebarItems = [
     {
-        title: "Dashboard",
+        title: "Home",
         href: "/",
-        icon: LayoutDashboard,
+        icon: Home,
     },
     {
-        title: "Sources",
+        title: "Feed",
         href: "/sources",
-        icon: Radio,
-    },
-    {
-        title: "Library",
-        href: "/decks",
-        icon: Library,
+        icon: Rss,
     },
     {
         title: "Inbox",
@@ -30,9 +25,14 @@ const sidebarItems = [
         icon: Inbox,
     },
     {
-        title: "Study",
+        title: "Decks",
+        href: "/decks",
+        icon: Layers,
+    },
+    {
+        title: "Learn",
         href: "/study",
-        icon: GraduationCap,
+        icon: Brain,
     },
 ]
 

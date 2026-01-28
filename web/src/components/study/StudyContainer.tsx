@@ -31,7 +31,7 @@ interface StudyContainerProps {
     onComplete?: () => void
 }
 
-export function StudyContainer({ cards, deckTitle = "Study Session", onComplete }: StudyContainerProps) {
+export function StudyContainer({ cards, deckTitle = "Learning Session", onComplete }: StudyContainerProps) {
     const [currentIndex, setCurrentIndex] = useState(0)
     const [completedCards, setCompletedCards] = useState<string[]>([])
 
@@ -72,7 +72,7 @@ export function StudyContainer({ cards, deckTitle = "Study Session", onComplete 
                     You've reviewed all {cards.length} cards
                 </p>
                 <Link href="/decks">
-                    <Button>Back to Library</Button>
+                    <Button>Back to Decks</Button>
                 </Link>
             </div>
         )
