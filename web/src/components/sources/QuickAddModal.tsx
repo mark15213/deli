@@ -95,6 +95,7 @@ export function QuickAddModal({ onSourceAdded }: { onSourceAdded?: () => void })
                     // For SourceCreate, we need to pass a dict.
                     // Let's assume for now we pass 'url' and whatever config we have.
                     url: detectionResult.metadata.url || input,
+                    author: detectionResult.metadata.author,
                     ...config
                 },
                 ingestion_rules: config // Using config as ingestion rules for now

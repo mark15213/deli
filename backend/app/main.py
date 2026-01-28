@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.api import api_router
 from app.core.database import async_session_maker
 from app.core.debug_data import reseed_debug_sources
+from app.core.seed_data import reset_seed_data
 
 settings = get_settings()
 
@@ -19,13 +20,17 @@ async def lifespan(app: FastAPI):
     # Startup
     print(f"Starting {settings.app_name} v{settings.app_version}")
     
-    # Debug Data Seeding
-    try:
-        async with async_session_maker() as db:
-            await reseed_debug_sources(db)
-    except Exception as e:
-        print(f"Startup warning: Failed to seed debug data: {e}")
-
+    # Dev mode: seed test data
+    if settings.dev_mode:
+        print("Dev mode enabled - seeding test data...")
+        try:
+            async with async_session_maker() as db:
+                await reseed_debug_sources(db)
+                await reset_seed_data(db)
+            print("Test data seeded successfully.")
+        except Exception as e:
+            print(f"Startup warning: Failed to seed data: {e}")
+    
     yield
     # Shutdown
     print("Shutting down...")
@@ -65,3 +70,17 @@ async def root():
         "version": settings.app_version,
         "docs": "/docs",
     }
+
+
+# Dev mode: manual reseed endpoint
+if settings.dev_mode:
+    from fastapi import Depends
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.core.database import get_db
+    
+    @app.post("/dev/reseed")
+    async def manual_reseed(db: AsyncSession = Depends(get_db)):
+        """Manually reset seed data (dev only)."""
+        await reset_seed_data(db)
+        return {"status": "reseeded"}
+

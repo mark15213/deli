@@ -11,6 +11,7 @@ from app.models.models import (
     FSRSState,
     ReviewLog,
     Source,
+    card_decks,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "FSRSState",
     "ReviewLog",
     "Source",
+    "card_decks",
 ]

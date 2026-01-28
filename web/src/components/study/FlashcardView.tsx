@@ -2,86 +2,135 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { RotateCw, ArrowLeft, ExternalLink } from "lucide-react"
+import { ExternalLink, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export function FlashcardView() {
+interface FlashcardViewProps {
+    question: string
+    answer: string
+    source?: string
+    sourceUrl?: string
+    onRate: (rating: "forgot" | "hard" | "easy") => void
+}
+
+export function FlashcardView({ question, answer, source, sourceUrl, onRate }: FlashcardViewProps) {
     const [isFlipped, setIsFlipped] = useState(false)
 
-    // Mock data
-    const card = {
-        front: "What is the 'Lindy Effect'?",
-        back: "The Lindy Effect is a theorized phenomenon by which the future life expectancy of some non-perishable things like a technology or an idea is proportional to their current age, so that every additional period of survival implies a longer remaining life expectancy.",
-        source: "Nassim Taleb - Antifragile"
+    const handleFlip = () => {
+        setIsFlipped(!isFlipped)
     }
 
     return (
-        <div className="flex flex-col h-full max-w-4xl mx-auto px-6 py-10 w-full">
-            {/* Header / Nav */}
-            <div className="flex items-center justify-between mb-8">
-                <Button variant="ghost" className="gap-2">
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Dashboard
-                </Button>
-                <div className="text-sm font-medium text-muted-foreground">
-                    Card 5 of 20
-                </div>
-            </div>
-
+        <div className="flex flex-col h-full">
             {/* Card Area */}
-            <div className="flex-1 flex flex-col justify-center min-h-[400px]">
-                <div
-                    className="group relative h-96 w-full cursor-pointer [perspective:1000px]"
-                    onClick={() => setIsFlipped(!isFlipped)}
-                >
-                    <div className={cn(
-                        "relative h-full w-full rounded-2xl shadow-xl transition-all duration-500 [transform-style:preserve-3d] border bg-card",
-                        isFlipped ? "[transform:rotateY(180deg)]" : ""
-                    )}>
-                        {/* Front */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center [backface-visibility:hidden]">
-                            <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-6">Question</span>
-                            <h2 className="text-3xl font-bold leading-tight">{card.front}</h2>
-                            <div className="absolute bottom-6 right-6 text-xs text-muted-foreground flex items-center gap-1 opacity-50">
-                                <RotateCw className="h-3 w-3" /> Click to flip
-                            </div>
-                        </div>
+            <div className="flex-1 flex flex-col justify-center px-8 py-12">
+                <div className="max-w-2xl mx-auto w-full">
+                    {/* Flashcard with 3D flip */}
+                    <div
+                        className="relative h-[400px] w-full cursor-pointer [perspective:1200px]"
+                        onClick={handleFlip}
+                    >
+                        <div className={cn(
+                            "relative h-full w-full transition-all duration-700 [transform-style:preserve-3d]",
+                            isFlipped && "[transform:rotateY(180deg)]"
+                        )}>
+                            {/* Front - Question */}
+                            <div className="absolute inset-0 [backface-visibility:hidden]">
+                                <div className="h-full w-full rounded-2xl bg-card border-2 shadow-2xl flex flex-col items-center justify-center p-12 text-center relative overflow-hidden">
+                                    {/* Card depth effect */}
+                                    <div className="absolute inset-x-0 bottom-0 h-2 bg-gradient-to-t from-muted to-transparent rounded-b-2xl" />
+                                    <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-l from-muted to-transparent rounded-r-2xl" />
 
-                        {/* Back */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center [backface-visibility:hidden] [transform:rotateY(180deg)] bg-primary/5 dark:bg-primary/10">
-                            <span className="text-sm font-medium text-primary uppercase tracking-wider mb-6">Answer</span>
-                            <p className="text-xl leading-relaxed text-foreground/90">{card.back}</p>
-                            <div className="absolute bottom-6 left-6">
-                                <Button variant="link" className="text-xs text-muted-foreground h-auto p-0 gap-1">
-                                    <ExternalLink className="h-3 w-3" /> {card.source}
-                                </Button>
+                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-6 bg-muted px-3 py-1 rounded-full">
+                                        Question
+                                    </span>
+                                    <h2 className="text-2xl md:text-3xl font-bold leading-tight">
+                                        {question}
+                                    </h2>
+
+                                    {/* Flip hint */}
+                                    <div className="absolute bottom-6 flex items-center gap-2 text-xs text-muted-foreground">
+                                        <RotateCcw className="h-3 w-3" />
+                                        <span>Click to reveal answer</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Back - Answer */}
+                            <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                                <div className="h-full w-full rounded-2xl border-2 shadow-2xl flex flex-col items-center justify-center p-12 text-center relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-primary/10">
+                                    {/* Card depth effect */}
+                                    <div className="absolute inset-x-0 bottom-0 h-2 bg-gradient-to-t from-primary/10 to-transparent rounded-b-2xl" />
+
+                                    <span className="text-xs font-semibold text-primary uppercase tracking-widest mb-6 bg-primary/10 px-3 py-1 rounded-full">
+                                        Answer
+                                    </span>
+                                    <p className="text-xl leading-relaxed text-foreground/90">
+                                        {answer}
+                                    </p>
+
+                                    {/* Source link */}
+                                    {source && (
+                                        <div className="absolute bottom-6 left-6">
+                                            <Button
+                                                variant="link"
+                                                className="text-xs text-muted-foreground h-auto p-0 gap-1"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    if (sourceUrl) window.open(sourceUrl, '_blank')
+                                                }}
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                {source}
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Controls */}
-            <div className="mt-10 grid grid-cols-3 gap-6 max-w-2xl mx-auto w-full">
-                <Button variant="outline" className="h-14 border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-red-900/50 dark:hover:bg-red-950/50">
-                    <div className="flex flex-col items-center">
-                        <span className="font-bold">Forgot</span>
-                        <span className="text-[10px] uppercase opacity-70">1 min</span>
-                    </div>
-                </Button>
-                <Button variant="outline" className="h-14 border-yellow-200 hover:bg-yellow-50 hover:text-yellow-600 dark:border-yellow-900/50 dark:hover:bg-yellow-950/50">
-                    <div className="flex flex-col items-center">
-                        <span className="font-bold">Hard</span>
-                        <span className="text-[10px] uppercase opacity-70">2 days</span>
-                    </div>
-                </Button>
-                <Button variant="outline" className="h-14 border-green-200 hover:bg-green-50 hover:text-green-600 dark:border-green-900/50 dark:hover:bg-green-950/50">
-                    <div className="flex flex-col items-center">
-                        <span className="font-bold">Easy</span>
-                        <span className="text-[10px] uppercase opacity-70">4 days</span>
-                    </div>
-                </Button>
+            {/* Rating Buttons - Only visible after flip */}
+            <div className={cn(
+                "p-6 border-t bg-card/50 backdrop-blur transition-all duration-300",
+                isFlipped ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+            )}>
+                <div className="max-w-lg mx-auto grid grid-cols-3 gap-4">
+                    <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-16 border-red-200 hover:bg-red-50 hover:text-red-600 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950/50 flex-col gap-0.5"
+                        onClick={() => onRate("forgot")}
+                    >
+                        <span className="text-2xl">🔴</span>
+                        <span className="font-semibold text-sm">Forgot</span>
+                        <span className="text-[10px] text-muted-foreground">1 min</span>
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-16 border-yellow-200 hover:bg-yellow-50 hover:text-yellow-600 hover:border-yellow-300 dark:border-yellow-900/50 dark:hover:bg-yellow-950/50 flex-col gap-0.5"
+                        onClick={() => onRate("hard")}
+                    >
+                        <span className="text-2xl">🟡</span>
+                        <span className="font-semibold text-sm">Hard</span>
+                        <span className="text-[10px] text-muted-foreground">2 days</span>
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-16 border-green-200 hover:bg-green-50 hover:text-green-600 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950/50 flex-col gap-0.5"
+                        onClick={() => onRate("easy")}
+                    >
+                        <span className="text-2xl">🟢</span>
+                        <span className="font-semibold text-sm">Easy</span>
+                        <span className="text-[10px] text-muted-foreground">4 days</span>
+                    </Button>
+                </div>
             </div>
         </div>
     )
 }
+

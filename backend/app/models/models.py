@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from typing import Optional, List
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, JSON, Integer, Float, Boolean, UniqueConstraint, Index, ARRAY
+from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, JSON, Integer, Float, Boolean, UniqueConstraint, Index, ARRAY, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -105,6 +105,15 @@ class SourceMaterial(Base):
     cards: Mapped[List["Card"]] = relationship(back_populates="source_material")
 
 
+# Association Tables
+card_decks = Table(
+    "card_decks",
+    Base.metadata,
+    Column("card_id", UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True),
+    Column("deck_id", UUID(as_uuid=True), ForeignKey("decks.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class Deck(Base):
     """Collection of cards."""
     __tablename__ = "decks"
@@ -121,7 +130,7 @@ class Deck(Base):
 
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="decks")
-    cards: Mapped[List["Card"]] = relationship(back_populates="deck", cascade="all, delete-orphan")
+    cards: Mapped[List["Card"]] = relationship(secondary=card_decks, back_populates="decks")
     subscribers: Mapped[List["DeckSubscription"]] = relationship(back_populates="deck", cascade="all, delete-orphan")
 
 
@@ -130,7 +139,7 @@ class Card(Base):
     __tablename__ = "cards"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    deck_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("decks.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     source_material_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("source_materials.id", ondelete="SET NULL"), nullable=True)
     
     type: Mapped[str] = mapped_column(String(30)) # 'mcq', 'cloze', 'code'
@@ -142,7 +151,7 @@ class Card(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     # Relationships
-    deck: Mapped["Deck"] = relationship(back_populates="cards")
+    decks: Mapped[List["Deck"]] = relationship(secondary=card_decks, back_populates="cards")
     source_material: Mapped["SourceMaterial"] = relationship(back_populates="cards")
     study_progress: Mapped[List["StudyProgress"]] = relationship(back_populates="card", cascade="all, delete-orphan")
 

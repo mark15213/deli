@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Deli API"
     app_version: str = "0.1.0"
     debug: bool = False
+    dev_mode: bool = True  # Enable mock auth and seed data in development
     
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/deli"
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4-turbo-preview"
+    openai_base_url: str | None = None
     
     # Security
     secret_key: str = "your-secret-key-change-in-production"

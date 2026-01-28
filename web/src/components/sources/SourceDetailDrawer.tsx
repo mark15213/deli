@@ -41,6 +41,9 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                     setSource(data);
                     if (data.type === 'ARXIV_PAPER') {
                         setActiveTab("analysis");
+                    } else if (activeTab === 'analysis') {
+                        // If switching back to non-arxiv, go to config
+                        setActiveTab("config");
                     }
                 })
                 .catch(err => console.error(err))
@@ -74,6 +77,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
     if (!source && !loading) return null;
 
     const paperData = source?.source_materials?.[0]?.rich_data;
+    const isArxiv = source?.type === 'ARXIV_PAPER';
 
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
@@ -97,8 +101,8 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                 {/* Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col mt-6 overflow-hidden">
                     <TabsList>
-                        <TabsTrigger value="config">Configuration</TabsTrigger>
-                        {source?.type === 'ARXIV_PAPER' && <TabsTrigger value="analysis">Paper Analysis</TabsTrigger>}
+                        {!isArxiv && <TabsTrigger value="config">Configuration</TabsTrigger>}
+                        {isArxiv && <TabsTrigger value="analysis">Paper Analysis</TabsTrigger>}
                         <TabsTrigger value="logs">Logs</TabsTrigger>
                     </TabsList>
 
@@ -114,6 +118,32 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                         </TabsContent>
 
                         <TabsContent value="analysis" className="space-y-6">
+                            {/* Metadata Section */}
+                            <div className="space-y-4 border-b pb-4">
+                                <div>
+                                    <h3 className="text-sm font-medium text-muted-foreground">Title</h3>
+                                    <p className="font-semibold text-lg">{source?.name}</p>
+                                </div>
+                                {(source?.connection_config as any)?.author && (
+                                    <div>
+                                        <h3 className="text-sm font-medium text-muted-foreground">Authors</h3>
+                                        <p className="text-sm">{(source?.connection_config as any)?.author}</p>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <h3 className="text-sm font-medium text-muted-foreground">Source URL</h3>
+                                        <a href={(source?.connection_config as any)?.url || (source?.connection_config as any)?.base_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm break-all">
+                                            {(source?.connection_config as any)?.url || (source?.connection_config as any)?.base_url || "N/A"}
+                                        </a>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-medium text-muted-foreground">Type</h3>
+                                        <p className="text-sm">{source?.type}</p>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Summary Section */}
                             {paperData?.summary ? (
                                 <div className="space-y-2">

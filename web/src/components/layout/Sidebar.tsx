@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Radio, Inbox, GraduationCap, ChevronLeft, ChevronRight } from "lucide-react"
+import { LayoutDashboard, Radio, Inbox, GraduationCap, ChevronLeft, ChevronRight, Library } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
@@ -18,6 +18,11 @@ const sidebarItems = [
         title: "Sources",
         href: "/sources",
         icon: Radio,
+    },
+    {
+        title: "Library",
+        href: "/decks",
+        icon: Library,
     },
     {
         title: "Inbox",

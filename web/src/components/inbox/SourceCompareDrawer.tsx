@@ -2,98 +2,196 @@
 
 import { DetailPanel } from "@/components/layout/DetailPanel"
 import { Button } from "@/components/ui/button"
-import { X, Check } from "lucide-react"
+import { X, Check, Loader2, FileText, HelpCircle, StickyNote } from "lucide-react"
+import { useState } from "react"
+import { bulkApprove, bulkReject, type InboxSourceGroup, type InboxCardPreview } from "@/lib/api/inbox"
+import { cn } from "@/lib/utils"
 
 interface SourceCompareDrawerProps {
     isOpen: boolean
     onClose: () => void
-    item: any // Type this properly in a real app
+    item: InboxSourceGroup | null
+    onProcessed?: () => void
 }
 
-export function SourceCompareDrawer({ isOpen, onClose, item }: SourceCompareDrawerProps) {
+export function SourceCompareDrawer({ isOpen, onClose, item, onProcessed }: SourceCompareDrawerProps) {
+    const [processing, setProcessing] = useState(false)
+    const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set())
+
     if (!item) return null
+
+    // Only pending cards can be selected for bulk actions
+    const pendingCards = item.cards.filter(c => c.status === "pending")
+    const pendingCardIds = pendingCards.map(c => c.id)
+    const allPendingSelected = selectedCards.size === pendingCardIds.length && pendingCardIds.length > 0
+
+    const toggleCard = (cardId: string) => {
+        const card = item.cards.find(c => c.id === cardId)
+        if (card?.status !== "pending") return // Can't select non-pending cards
+
+        const newSet = new Set(selectedCards)
+        if (newSet.has(cardId)) {
+            newSet.delete(cardId)
+        } else {
+            newSet.add(cardId)
+        }
+        setSelectedCards(newSet)
+    }
+
+    const toggleAll = () => {
+        if (allPendingSelected) {
+            setSelectedCards(new Set())
+        } else {
+            setSelectedCards(new Set(pendingCardIds))
+        }
+    }
+
+    const handleApprove = async () => {
+        const idsToApprove = selectedCards.size > 0 ? Array.from(selectedCards) : pendingCardIds
+        if (idsToApprove.length === 0) return
+
+        try {
+            setProcessing(true)
+            await bulkApprove(idsToApprove)
+            onProcessed?.()
+        } catch (error) {
+            console.error("Failed to approve cards:", error)
+        } finally {
+            setProcessing(false)
+        }
+    }
+
+    const handleReject = async () => {
+        const idsToReject = selectedCards.size > 0 ? Array.from(selectedCards) : pendingCardIds
+        if (idsToReject.length === 0) return
+
+        try {
+            setProcessing(true)
+            await bulkReject(idsToReject)
+            onProcessed?.()
+        } catch (error) {
+            console.error("Failed to reject cards:", error)
+        } finally {
+            setProcessing(false)
+        }
+    }
+
+    const getCardIcon = (type: string) => {
+        switch (type) {
+            case "note": return <StickyNote className="h-4 w-4 text-blue-500" />
+            case "flashcard": return <FileText className="h-4 w-4 text-green-500" />
+            default: return <HelpCircle className="h-4 w-4 text-purple-500" />
+        }
+    }
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case "pending":
+                return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">Pending</span>
+            case "active":
+                return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Approved</span>
+            case "rejected":
+                return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Rejected</span>
+            default:
+                return null
+        }
+    }
+
+    const hasPendingCards = pendingCards.length > 0
 
     return (
         <DetailPanel
             isOpen={isOpen}
             onClose={onClose}
-            className="w-[800px] border-l shadow-2xl flex flex-col p-0 bg-background"
+            className="w-[600px] border-l shadow-2xl flex flex-col p-0 bg-background"
         >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
                 <div>
-                    <h2 className="text-lg font-semibold">Review Generation</h2>
-                    <p className="text-sm text-muted-foreground">Verify AI accuracy against the source</p>
+                    <h2 className="text-lg font-semibold">{item.source_title}</h2>
+                    <p className="text-sm text-muted-foreground">
+                        {item.total_count} cards ({pendingCards.length} pending)
+                    </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={onClose}>
-                        Cancel
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleReject}
+                        disabled={processing || !hasPendingCards}
+                    >
+                        {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                        Reject {selectedCards.size > 0 ? `(${selectedCards.size})` : `All (${pendingCards.length})`}
                     </Button>
-                    <Button size="sm" className="gap-2">
-                        <Check className="h-4 w-4" />
-                        Approve & Save
+                    <Button
+                        size="sm"
+                        className="gap-2"
+                        onClick={handleApprove}
+                        disabled={processing || !hasPendingCards}
+                    >
+                        {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        Approve {selectedCards.size > 0 ? `(${selectedCards.size})` : `All (${pendingCards.length})`}
                     </Button>
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
-                {/* Left: Source */}
-                <div className="flex-1 overflow-y-auto p-6 border-r pr-6 bg-muted/10">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 sticky top-0 bg-background/95 backdrop-blur py-2">Source Text</h3>
-                    <div className="prose dark:prose-invert text-sm max-w-none">
-                        <p className="whitespace-pre-wrap leading-relaxed opacity-90">
-                            {item.fullText || "Source text content not available."}
-                            {/* Mock long text */}
-                            {Array(5).fill(null).map((_, i) => (
-                                <span key={i} className="block mt-4">
-                                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-                                </span>
-                            ))}
-                        </p>
-                    </div>
+            {/* Select All (only if pending cards exist) */}
+            {hasPendingCards && (
+                <div className="px-6 py-3 border-b bg-muted/30 flex items-center gap-3">
+                    <input
+                        type="checkbox"
+                        checked={allPendingSelected}
+                        onChange={toggleAll}
+                        className="h-4 w-4 rounded"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                        {allPendingSelected ? 'Deselect all pending' : `Select all pending (${pendingCards.length})`}
+                    </span>
                 </div>
+            )}
 
-                {/* Right: AI Output */}
-                <div className="flex-1 overflow-y-auto p-6 pl-6 bg-background">
-                    <h3 className="text-sm font-medium text-primary uppercase tracking-wider mb-4 sticky top-0 bg-background/95 backdrop-blur py-2">AI Generated Assets</h3>
+            {/* Cards List */}
+            <div className="flex-1 overflow-y-auto p-6">
+                <div className="space-y-3">
+                    {item.cards.map((card) => {
+                        const isPending = card.status === "pending"
+                        const isSelected = selectedCards.has(card.id)
 
-                    <div className="space-y-6">
-                        {/* Flashcards */}
-                        <div className="space-y-3">
-                            <h4 className="font-medium flex items-center gap-2">
-                                Generated Flashcards
-                                <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">3</span>
-                            </h4>
-                            {[1, 2, 3].map((i) => (
-                                <div key={i} className="border rounded-lg p-4 text-sm bg-card hover:border-primary/50 transition-colors group relative">
-                                    <div className="font-medium mb-2 text-primary/80">Q: What is the core concept here?</div>
-                                    <div className="text-muted-foreground">A: This represents the answer generated by the AI model based on the source text.</div>
-                                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100">
-                                        <Button variant="ghost" size="icon" className="h-6 w-6"><X className="h-3 w-3" /></Button>
+                        return (
+                            <div
+                                key={card.id}
+                                className={cn(
+                                    "border rounded-lg p-4 text-sm bg-card transition-colors",
+                                    isPending && "hover:border-primary/50 cursor-pointer",
+                                    isSelected && "border-primary ring-1 ring-primary/20",
+                                    !isPending && "opacity-60"
+                                )}
+                                onClick={() => isPending && toggleCard(card.id)}
+                            >
+                                <div className="flex items-start gap-3">
+                                    {isPending && (
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleCard(card.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="mt-1 h-4 w-4 rounded"
+                                        />
+                                    )}
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            {getCardIcon(card.type)}
+                                            <span className="text-xs uppercase text-muted-foreground font-medium">
+                                                {card.type}
+                                            </span>
+                                            {getStatusBadge(card.status)}
+                                        </div>
+                                        <p className="text-foreground">{card.question}</p>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-
-                        {/* Quiz */}
-                        <div className="space-y-3">
-                            <h4 className="font-medium flex items-center gap-2">
-                                Quiz Question
-                                <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">1</span>
-                            </h4>
-                            <div className="border rounded-lg p-4 text-sm bg-card">
-                                <div className="font-medium mb-3">Which of the following best describes the author's intent?</div>
-                                <div className="space-y-2">
-                                    {['To inform', 'To persuade', 'To entertain'].map(opt => (
-                                        <div key={opt} className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer">
-                                            <div className="h-4 w-4 rounded-full border" />
-                                            <span>{opt}</span>
-                                        </div>
-                                    ))}
-                                </div>
                             </div>
-                        </div>
-                    </div>
+                        )
+                    })}
                 </div>
             </div>
         </DetailPanel>
