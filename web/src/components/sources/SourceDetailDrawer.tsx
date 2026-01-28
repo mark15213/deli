@@ -15,22 +15,25 @@ import { SourceFormContainer } from "./forms/SourceFormContainer"
 import { ConfigTab } from "./tabs/ConfigTab"
 import { RulesTab } from "./tabs/RulesTab"
 import { LogsTab } from "./tabs/LogsTab"
-import { Power, Save, RefreshCw, Trash2 } from "lucide-react"
+import { Power, Save, RefreshCw, Trash2, Loader2 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Source } from "@/types/source"
+import { deleteSource } from "@/lib/api/sources"
 import React from "react"
 
 interface SourceDetailDrawerProps {
     isOpen: boolean
     onClose: () => void
     sourceId: string | null
+    onDeleted?: () => void
 }
 
-export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDrawerProps) {
+export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: SourceDetailDrawerProps) {
     const [source, setSource] = React.useState<Source | null>(null);
     const [loading, setLoading] = React.useState(false);
     const [activeTab, setActiveTab] = React.useState("config");
+    const [deleting, setDeleting] = React.useState(false);
 
     // Fetch Source Data
     React.useEffect(() => {
@@ -73,6 +76,25 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                 .then(data => setSource(data));
         } catch (e) {
             console.error("Failed to run lens", e);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!source) return;
+        if (!confirm(`Are you sure you want to delete "${source.name}"? This cannot be undone.`)) {
+            return;
+        }
+
+        setDeleting(true);
+        try {
+            await deleteSource(source.id);
+            onClose();
+            onDeleted?.();
+        } catch (e) {
+            console.error("Failed to delete source", e);
+            alert("Failed to delete source");
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -147,7 +169,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                             </div>
 
                             {/* Summary Section */}
-                            {paperData?.summary ? (
+                            {typeof paperData?.summary === 'string' && paperData.summary ? (
                                 <div className="space-y-2">
                                     <h3 className="text-lg font-semibold flex items-center gap-2">
                                         <RefreshCw className="w-4 h-4" />
@@ -179,7 +201,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
                             <div className="space-y-3">
                                 <h3 className="text-lg font-semibold">Suggested Lenses</h3>
                                 <div className="grid grid-cols-1 gap-3">
-                                    {paperData?.suggestions?.map((lens: any) => (
+                                    {Array.isArray(paperData?.suggestions) && paperData.suggestions.map((lens: any) => (
                                         <div key={lens.key} className="border rounded-lg p-3 hover:bg-muted/50 transition-colors flex justify-between items-start">
                                             <div>
                                                 <div className="font-medium text-sm">{lens.name}</div>
@@ -218,9 +240,14 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
 
                 {/* Footer */}
                 <div className="flex-none pt-6 mt-2 border-t flex justify-between items-center bg-background">
-                    <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 px-3">
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only sm:not-sr-only">Delete</span>
+                    <Button
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-2 h-9 px-3"
+                        onClick={handleDelete}
+                        disabled={deleting}
+                    >
+                        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        <span className="sr-only sm:not-sr-only">{deleting ? "Deleting..." : "Delete"}</span>
                     </Button>
                     <div className="flex gap-3">
                         <Button variant="outline" className="gap-2">

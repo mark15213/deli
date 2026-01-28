@@ -84,3 +84,13 @@ export async function uploadDocument(sourceId: string, file: File): Promise<Uplo
     return res.json();
 }
 
+export async function deleteSource(sourceId: string): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/sources/${sourceId}`, {
+        method: "DELETE",
+    });
+
+    if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: "Delete failed" }));
+        throw new Error(error.detail || "Failed to delete source");
+    }
+}

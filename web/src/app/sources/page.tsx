@@ -93,6 +93,7 @@ export default function SourcesPage() {
                 isOpen={!!selectedSource}
                 onClose={() => setSelectedSource(null)}
                 sourceId={selectedSource}
+                onDeleted={loadSources}
             />
         </div>
     )
