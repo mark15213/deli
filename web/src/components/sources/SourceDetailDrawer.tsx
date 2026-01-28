@@ -18,6 +18,8 @@ import { LogsTab } from "./tabs/LogsTab"
 import { Power, Save, RefreshCw, Trash2 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Source } from "@/types/source"
+import React from "react"
 
 interface SourceDetailDrawerProps {
     isOpen: boolean
@@ -234,5 +236,3 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId }: SourceDetailDr
         </Sheet>
     )
 }
-import { Source } from "@/types/source";
-import React from "react";

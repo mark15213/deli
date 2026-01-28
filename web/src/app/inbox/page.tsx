@@ -2,10 +2,11 @@
 
 import { InboxItem } from "@/components/inbox/InboxItem"
 import { SourceCompareDrawer } from "@/components/inbox/SourceCompareDrawer"
+import { ImportCardsModal } from "@/components/inbox/ImportCardsModal"
 import { useState, useEffect, useCallback } from "react"
 import { getPendingBySource, addCardToDeck, removeCardFromDeck, type InboxSourceGroup } from "@/lib/api/inbox"
 import { getDecks, createDeck, type Deck } from "@/lib/api/decks"
-import { Loader2, X } from "lucide-react"
+import { Loader2, X, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -80,6 +81,7 @@ export default function InboxPage() {
     const [selectedItem, setSelectedItem] = useState<InboxSourceGroup | null>(null)
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
     const [showCreateDeckModal, setShowCreateDeckModal] = useState(false)
+    const [showImportModal, setShowImportModal] = useState(false)
 
     const fetchDecks = useCallback(async () => {
         try {
@@ -198,8 +200,14 @@ export default function InboxPage() {
                             <h1 className="text-2xl font-bold tracking-tight">Insight Inbox</h1>
                             <p className="text-muted-foreground mt-1">Review and process AI-generated knowledge assets</p>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                            <span className="font-medium text-foreground">{totalCards}</span> items
+                        <div className="flex items-center gap-4">
+                            <Button onClick={() => setShowImportModal(true)} variant="outline" className="gap-2">
+                                <Upload className="h-4 w-4" />
+                                Import Cards
+                            </Button>
+                            <div className="text-sm text-muted-foreground">
+                                <span className="font-medium text-foreground">{totalCards}</span> items
+                            </div>
                         </div>
                     </div>
 
@@ -277,6 +285,13 @@ export default function InboxPage() {
                 isOpen={showCreateDeckModal}
                 onClose={() => setShowCreateDeckModal(false)}
                 onCreated={handleDeckCreated}
+            />
+
+            {/* Import Cards Modal */}
+            <ImportCardsModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onSuccess={fetchInboxItems}
             />
         </div>
     )

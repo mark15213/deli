@@ -164,3 +164,86 @@ async def sync_source(
     # This would trigger a Celery task or background job
     # For now just return mock
     return {"status": "sync_started", "job_id": "mock-job-id"}
+
+
+from fastapi import UploadFile, File
+from app.services.document_parser import document_parser
+from app.models.models import Card, CardStatus, SourceMaterial
+
+
+@router.post("/{source_id}/upload")
+async def upload_document(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_id: UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(deps.get_mock_user),
+) -> Any:
+    """
+    Upload a document (CSV, MD, TXT) to parse into cards.
+    Cards are created with PENDING status for user review.
+    """
+    # Verify source exists and belongs to user
+    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    result = await db.execute(stmt)
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    # Read file content
+    content = await file.read()
+    filename = file.filename or "upload.txt"
+    
+    # Parse document into cards
+    try:
+        parsed_cards = document_parser.parse(filename, content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    if not parsed_cards:
+        raise HTTPException(status_code=400, detail="No cards could be parsed from the document")
+    
+    # Create SourceMaterial for tracking
+    source_material = SourceMaterial(
+        id=uuid.uuid4(),
+        user_id=current_user.id,
+        source_id=source_id,
+        external_id=f"upload_{uuid.uuid4().hex[:8]}",
+        title=filename,
+        rich_data={"upload_filename": filename, "parsed_count": len(parsed_cards)},
+    )
+    db.add(source_material)
+    
+    # Create Card objects
+    created_cards = []
+    for pc in parsed_cards:
+        card = Card(
+            id=uuid.uuid4(),
+            owner_id=current_user.id,
+            source_material_id=source_material.id,
+            type=pc.type,
+            content={
+                "question": pc.question,
+                "answer": pc.answer,
+                "options": pc.options,
+                "explanation": pc.explanation,
+            },
+            status=CardStatus.PENDING,
+            tags=pc.tags,
+        )
+        db.add(card)
+        created_cards.append({
+            "id": str(card.id),
+            "type": card.type,
+            "question": pc.question,
+        })
+    
+    await db.commit()
+    
+    return {
+        "status": "success",
+        "source_material_id": str(source_material.id),
+        "cards_created": len(created_cards),
+        "cards": created_cards,
+    }
+
