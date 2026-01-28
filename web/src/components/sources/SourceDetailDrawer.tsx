@@ -18,6 +18,8 @@ import { LogsTab } from "./tabs/LogsTab"
 import { Power, Save, RefreshCw, Trash2, Loader2 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { Source } from "@/types/source"
 import { deleteSource } from "@/lib/api/sources"
 import React from "react"
@@ -177,7 +179,8 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                     </h3>
                                     <div className="p-4 bg-muted/30 rounded-lg text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none break-words">
                                         <ReactMarkdown
-                                            remarkPlugins={[remarkGfm]}
+                                            remarkPlugins={[remarkGfm, remarkMath]}
+                                            rehypePlugins={[rehypeKatex]}
                                             components={{
                                                 a: ({ node, ...props }) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />,
                                                 p: ({ node, ...props }) => <p {...props} className="mb-2 last:mb-0" />,
@@ -185,6 +188,13 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                                 ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-4 mb-2" />,
                                                 li: ({ node, ...props }) => <li {...props} className="mb-1" />,
                                                 strong: ({ node, ...props }) => <strong {...props} className="font-semibold text-foreground" />,
+                                                // Math support
+                                                span: ({ node, className, children, ...props }) => {
+                                                    if (className?.includes('katex')) {
+                                                        return <span className={className} {...props}>{children}</span>
+                                                    }
+                                                    return <span className={className} {...props}>{children}</span>
+                                                }
                                             }}
                                         >
                                             {paperData.summary}
