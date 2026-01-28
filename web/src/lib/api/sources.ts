@@ -1,5 +1,7 @@
 import { DetectRequest, DetectResponse, Source } from "@/types/source";
 
+export type { Source } from "@/types/source";
+
 // Base API URL - assuming standard setup, adjust if env var needed
 const API_BASE_URL = "/api";
 
