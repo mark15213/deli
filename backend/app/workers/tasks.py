@@ -2,10 +2,9 @@
 import asyncio
 from uuid import UUID
 
-from asgiref.sync import async_to_sync
+
 from sqlalchemy import select
 
-from app.core.celery_app import celery_app
 from app.core.database import async_session_maker
 from app.services.ingestion_service import IngestionService
 from app.services.generator_service import GeneratorService
@@ -13,13 +12,12 @@ from app.models import Source, OAuthConnection
 from app.models import Card, CardStatus
 
 
-@celery_app.task
-def sync_notion_content(source_id: str):
+# Converted from Celery task to standard async function
+async def sync_notion_content(source_id: str):
     """
-    Celery task to sync content based on a Source.
-    Wraps async logic in sync task.
+    Background task to sync content based on a Source.
     """
-    async_to_sync(run_sync_logic)(source_id)
+    await run_sync_logic(source_id)
 
 
 async def run_sync_logic(source_id: str):

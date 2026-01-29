@@ -21,6 +21,7 @@ export interface CardInDeck {
     question: string;
     status: string;
     tags: string[];
+    source_title?: string;
     created_at: string;
 }
 

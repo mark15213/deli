@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models import User, Deck, Card, CardStatus, DeckSubscription, StudyProgress, FSRSState, card_decks
+from app.models import User, Deck, Card, CardStatus, DeckSubscription, StudyProgress, FSRSState, card_decks, SourceMaterial
 
 from pydantic import BaseModel, Field
 
@@ -53,6 +53,7 @@ class CardInDeck(BaseModel):
     question: str
     status: str
     tags: List[str] = []
+    source_title: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -152,6 +153,15 @@ async def create_deck(
         cover_image_url=deck_in.cover_image_url,
     )
     db.add(deck)
+    await db.flush() # Get ID
+    
+    # Auto-subscribe owner
+    subscription = DeckSubscription(
+        user_id=current_user.id,
+        deck_id=deck.id
+    )
+    db.add(subscription)
+    
     await db.commit()
     await db.refresh(deck)
     
@@ -163,7 +173,7 @@ async def create_deck(
         cover_image_url=deck.cover_image_url,
         card_count=0,
         mastery_percent=0.0,
-        is_subscribed=False,
+        is_subscribed=True,
         last_review_at=None,
         created_at=deck.created_at,
     )
@@ -179,7 +189,9 @@ async def get_deck(
     stmt = (
         select(Deck)
         .where(Deck.id == deck_id)
-        .options(selectinload(Deck.cards))
+        .options(
+            selectinload(Deck.cards).selectinload(Card.source_material).selectinload(SourceMaterial.source)
+        )
     )
     result = await db.execute(stmt)
     deck = result.scalar_one_or_none()
@@ -207,6 +219,7 @@ async def get_deck(
             question=card.content.get("question", "") if card.content else "",
             status=card.status.value,
             tags=card.tags or [],
+            source_title=card.source_material.source.name if card.source_material and card.source_material.source else None,
             created_at=card.created_at,
         )
         for card in deck.cards

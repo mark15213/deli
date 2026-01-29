@@ -3,16 +3,19 @@ from uuid import UUID
 from typing import List, Optional
 from datetime import datetime, timezone
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, case
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models import (
     User, Deck, Card, CardStatus, DeckSubscription, 
-    StudyProgress, FSRSState, ReviewLog, card_decks
+    StudyProgress, FSRSState, ReviewLog, card_decks, SourceMaterial
 )
 
 from pydantic import BaseModel, Field
@@ -169,37 +172,56 @@ async def get_study_queue(
     
     # First, get cards from decks that are ACTIVE
     # Using distinct ensures we don't get duplicates if card is in multiple subscribed decks
+    # Prioritize reading_note type in the DB fetch to ensure they aren't cut off by the limit
     cards_stmt = (
         select(Card)
         .join(Card.decks)
         .where(
             Deck.id.in_(target_deck_ids),
-            Card.status == CardStatus.ACTIVE,
+            Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
         )
-        .options(selectinload(Card.decks))
-        .limit(limit * 2)  # Get more to filter
-        .distinct()
+        .options(
+            selectinload(Card.decks),
+            selectinload(Card.source_material).selectinload(SourceMaterial.source)
+        )
+        .order_by(
+            case((Card.type == "reading_note", 0), else_=1),
+            Card.created_at.desc()
+        )
+        .limit(limit * 5)  # Get more to filter and sort
     )
     cards_result = await db.execute(cards_stmt)
-    all_cards = cards_result.scalars().all()
+    raw_cards = cards_result.scalars().all()
     
-    # Sort cards to ensure reading notes (batches) appear in order
-    # We sort by batch_id to group them, then by batch_index to order them.
-    # Non-batched cards will have batch_id=None and appear as a group (or scattered if we don't handle None well, but None!=UUID so they group).
-    # We use 'None' or empty string for None batch_id.
+    # Deduplicate in Python (needed because we removed .distinct() to allow complex sorting)
+    all_cards = list({c.id: c for c in raw_cards}.values())
+    
+    # Sort cards to ensure reading notes (batches) appear in order and first
+    # 1. Primary sort: Reading notes first (0 vs 1)
+    # 2. Secondary sort: Batch ID grouping
+    # 3. Tertiary sort: Batch Index
     all_cards = sorted(
         all_cards, 
-        key=lambda c: (str(c.batch_id) if c.batch_id else '', c.batch_index if c.batch_index is not None else 0)
+        key=lambda c: (
+            0 if c.type == "reading_note" else 1,
+            str(c.batch_id) if c.batch_id else '', 
+            c.batch_index if c.batch_index is not None else 0
+        )
     )
+
+    logger.info(f"Study Queue Debug: Found {len(all_cards)} raw cards in decks {target_deck_ids}")
 
     # Get existing study progress for these cards
     card_ids = [c.id for c in all_cards]
-    progress_stmt = select(StudyProgress).where(
-        StudyProgress.user_id == current_user.id,
-        StudyProgress.card_id.in_(card_ids),
-    )
-    progress_result = await db.execute(progress_stmt)
-    progress_map = {p.card_id: p for p in progress_result.scalars().all()}
+    progress_map = {}
+    
+    if card_ids:
+        progress_stmt = select(StudyProgress).where(
+            StudyProgress.user_id == current_user.id,
+            StudyProgress.card_id.in_(card_ids),
+        )
+        progress_result = await db.execute(progress_stmt)
+        progress_map = {p.card_id: p for p in progress_result.scalars().all()}
     
     # Filter to cards that are due
     due_cards = []
@@ -214,7 +236,6 @@ async def get_study_queue(
         
         if len(due_cards) >= limit:
             break
-    
     # Calculate batch_total for cards with batch_id
     batch_totals = {}
     batch_ids_to_query = set(c.batch_id for c in due_cards if c.batch_id)
@@ -237,7 +258,7 @@ async def get_study_queue(
             options=card.content.get("options") if card.content else None,
             explanation=card.content.get("explanation") if card.content else None,
             tags=card.tags or [],
-            source_title=None,
+            source_title=card.source_material.source.name if card.source_material and card.source_material.source else None,
             deck_ids=[d.id for d in card.decks],
             deck_titles=[d.title for d in card.decks],
             batch_id=card.batch_id,
@@ -405,7 +426,7 @@ async def get_study_stats(
             ))
             .where(
                 Deck.id.in_(subscribed_deck_ids),
-                Card.status == CardStatus.ACTIVE,
+                Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
                 (StudyProgress.id == None) | (StudyProgress.due_date <= now),
             )
         )

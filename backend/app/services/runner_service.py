@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.core.lens import SourceData, Lens, Artifact
 from app.models.models import Source, SourceMaterial, Card, CardStatus, SourceLog
-from app.lenses.registry import get_default_summary_lens, get_profiler_lens, get_reading_notes_lens
+from app.lenses.registry import get_default_summary_lens, get_profiler_lens, get_reading_notes_lens, get_study_quiz_lens
 import uuid as uuid_module
 
 logger = logging.getLogger(__name__)
@@ -235,6 +235,7 @@ class RunnerService:
             return
 
         # Log start of processing (Sync Started)
+        process_start_time = time.time()
         await self._log_event(source.id, "sync_started", "running", message="Starting source processing")
         await self.db.commit()
 
@@ -351,7 +352,47 @@ class RunnerService:
                 await self._update_lens_log(source.id, "reading_notes", "failed",
                                            message=str(e), duration_ms=duration_ms)
         
+        # 8. Run Study Quiz Lens (Flashcards)
+        if self._is_paper_source(source):
+            start_time = time.time()
+            await self._log_event(source.id, "lens_started", "running", lens_key="study_quiz", message="Generating flashcards & quiz")
+            await self.db.commit()
+            try:
+                await self._generate_study_quiz(source, source_data, source_material)
+                duration_ms = int((time.time() - start_time) * 1000)
+                await self._update_lens_log(source.id, "study_quiz", "completed",
+                                            message="Flashcards generated", duration_ms=duration_ms)
+            except Exception as e:
+                duration_ms = int((time.time() - start_time) * 1000)
+                await self._update_lens_log(source.id, "study_quiz", "failed",
+                                           message=str(e), duration_ms=duration_ms)
+        
+        
         await self.db.commit()
+        
+        # 8. Mark the initial sync log as completed
+        # We need to re-fetch or update the log we created at the start
+        # Since we didn't keep the ID, let's find the running sync_started log
+        stmt_log = (
+            select(SourceLog)
+            .where(
+                SourceLog.source_id == source.id,
+                SourceLog.event_type == "sync_started",
+                SourceLog.status == "running"
+            )
+            .order_by(SourceLog.created_at.desc())
+            .limit(1)
+        )
+        res_log = await self.db.execute(stmt_log)
+        init_log = res_log.scalar_one_or_none()
+        
+        if init_log:
+            init_log.status = "completed"
+            init_log.event_type = "sync_completed"
+            init_log.message = "Source processing finished successfully"
+            init_log.duration_ms = int((time.time() - process_start_time) * 1000) # approximate total time
+            await self.db.commit()
+
         logger.info(f"Finished processing source {source_id}")
 
     async def _fetch_source_content(self, source: Source) -> Dict[str, Any]:
@@ -423,6 +464,15 @@ class RunnerService:
                     notes = notes[key]
                     break
 
+        # Helper: Parse if string (fallback if run_lens failed to parse)
+        if isinstance(notes, str):
+            try:
+                # Try simple clean
+                cleaned = notes.replace("```json", "").replace("```", "").strip()
+                notes = json.loads(cleaned)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse string notes as JSON: {notes[:100]}...")
+
         if not isinstance(notes, list):
             raise ValueError(f"Reading notes lens returned non-list data: {type(notes)} - {str(notes)[:100]}...")
         
@@ -456,3 +506,44 @@ class RunnerService:
         await self.db.commit()
         logger.info(f"Generated {cards_created} reading notes for source {source.id} with batch_id {batch_id}")
 
+
+    async def _generate_study_quiz(self, source: Source, source_data: SourceData, source_material: SourceMaterial):
+        """
+        Generate study quiz and flashcards.
+        """
+        logger.info(f"Generating study quiz for source {source.id}")
+        
+        lens = get_study_quiz_lens()
+        artifact = await self.run_lens(source_data, lens)
+        result = artifact.content
+        
+        if not isinstance(result, dict) or "flashcards" not in result:
+             raise ValueError("Study Quiz lens returned invalid format")
+             
+        batch_id = uuid_module.uuid4()
+        cards_created = 0
+            
+        # 1. Create Flashcards
+            
+        # 2. Create Flashcards
+        for index, item in enumerate(result.get("flashcards", []), start=1):
+            if "question" not in item or "answer" not in item:
+                continue
+                
+            card = Card(
+                owner_id=source.user_id,
+                source_material_id=source_material.id,
+                type="flashcard",
+                content={
+                    "question": item["question"],
+                    "answer": item["answer"]
+                },
+                status=CardStatus.PENDING,
+                batch_id=batch_id,
+                batch_index=index
+            )
+            self.db.add(card)
+            cards_created += 1
+            
+        await self.db.commit()
+        logger.info(f"Generated {cards_created} cards (guide + flashcards) for source {source.id}")

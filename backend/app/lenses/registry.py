@@ -100,6 +100,56 @@ def get_reading_notes_lens() -> Lens:
         }
     )
 
+
+
+STUDY_QUIZ_SYSTEM_PROMPT = """You are a highly capable research assistant and tutor.
+Your goal is to create high-quality flashcards for active recall study.
+
+Step 1: Create 10 short-answer quiz questions (2-3 sentences each) that test deep understanding of the paper's core concepts.
+Step 2: Create a glossary of key terms with clear definitions.
+
+IMPORTANT Output Format:
+You must output a strictly valid JSON object. Do not include any text outside the JSON.
+Structure:
+{
+  "flashcards": [
+    { "question": "[Quiz Question 1]", "answer": "[Answer 1]" },
+    ...
+    { "question": "Define: [Term]", "answer": "[Definition]" }
+  ]
+}
+"""
+
+def get_study_quiz_lens() -> Lens:
+    """
+    Returns the Study Quiz Lens.
+    Generates flashcards (quiz + glossary).
+    """
+    return Lens(
+        key="study_quiz",
+        name="Flashcard Generator",
+        description="Generates quiz questions and glossary terms for active recall.",
+        system_prompt=STUDY_QUIZ_SYSTEM_PROMPT,
+        user_prompt_template="Generate flashcards for this paper:\n\n{text}",
+        output_schema={
+            "type": "object",
+            "properties": {
+                "flashcards": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string"},
+                            "answer": {"type": "string"}
+                        },
+                        "required": ["question", "answer"]
+                    }
+                }
+            },
+            "required": ["flashcards"]
+        }
+    )
+
 def get_lens_by_key(key: str) -> Lens:
     """
     Factory to retrieve a lens by key.
@@ -110,6 +160,8 @@ def get_lens_by_key(key: str) -> Lens:
         return get_profiler_lens()
     elif key == "reading_notes":
         return get_reading_notes_lens()
+    elif key == "study_quiz":
+        return get_study_quiz_lens()
     
     # Dynamic/Generic fallback or other hardcoded lenses
     # For now, return a generic one or raise error

@@ -189,6 +189,7 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                             options={currentCard.options}
                             correctAnswer={currentCard.correctAnswer}
                             explanation={currentCard.explanation}
+                            source={currentCard.source}
                             onComplete={handleQuizComplete}
                         />
                     )}

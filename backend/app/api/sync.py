@@ -20,6 +20,10 @@ async def trigger_sync(
     """
     Manually trigger sync for all Sources of the current user.
     """
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+
     # 1. Fetch user's sources
     stmt = select(Source).where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
@@ -28,17 +32,20 @@ async def trigger_sync(
     if not sources:
         return {"status": "no_source", "message": "No source configuration found."}
     
-    # 2. Trigger Celery tasks
-    task_ids = []
+    # 2. Trigger async tasks
+    triggered_count = 0
     for source in sources:
-        # Use delay() for async execution via Celery
-        task = sync_notion_content.delay(str(source.id))
-        task_ids.append(str(task.id))
+        # We only have sync implementation for Notion for now, assuming logic inside handles checks
+        # But for safety, let's just trigger it.
+        # Create asyncio task
+        asyncio.create_task(sync_notion_content(str(source.id)))
+        logger.info(f"[SYNC] Triggered background sync for source {source.id}")
+        triggered_count += 1
         
     return {
         "status": "triggered",
         "sources_count": len(sources),
-        "task_ids": task_ids
+        "triggered_tasks": triggered_count
     }
 
 

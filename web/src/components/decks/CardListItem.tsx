@@ -8,13 +8,14 @@ interface CardListItemProps {
     id: string
     type: ContentType
     content: string
+    source?: string
     isMastered?: boolean
     onClick?: () => void
     onDelete?: () => void
     isEditing?: boolean
 }
 
-export function CardListItem({ id, type, content, isMastered, onClick, onDelete, isEditing }: CardListItemProps) {
+export function CardListItem({ id, type, content, source, isMastered, onClick, onDelete, isEditing }: CardListItemProps) {
     return (
         <div
             className={cn(
@@ -32,6 +33,12 @@ export function CardListItem({ id, type, content, isMastered, onClick, onDelete,
             {/* Content Preview */}
             <div className="flex-1 min-w-0">
                 <p className="text-sm truncate">{content}</p>
+                {source && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                        {source}
+                    </p>
+                )}
             </div>
 
             {/* Status / Action */}
@@ -67,6 +74,7 @@ export interface Card {
     id: string
     type: ContentType
     content: string
+    source?: string
     isMastered?: boolean
 }
 

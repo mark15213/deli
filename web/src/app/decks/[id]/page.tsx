@@ -22,6 +22,7 @@ function mapApiCardToUiCard(card: CardInDeck): Card {
         id: card.id,
         type,
         content: card.question,
+        source: card.source_title,
         isMastered: card.status === "archived", // Simplified mastery check
     }
 }

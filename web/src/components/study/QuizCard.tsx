@@ -20,10 +20,11 @@ interface QuizCardProps {
     options?: QuizOption[]
     correctAnswer?: string  // For cloze type
     explanation?: string
+    source?: string
     onComplete: (isCorrect: boolean) => void
 }
 
-export function QuizCard({ type, question, options, correctAnswer, explanation, onComplete }: QuizCardProps) {
+export function QuizCard({ type, question, options, correctAnswer, explanation, source, onComplete }: QuizCardProps) {
     const [selectedOption, setSelectedOption] = useState<string | null>(null)
     const [clozeAnswer, setClozeAnswer] = useState("")
     const [isChecked, setIsChecked] = useState(false)
@@ -59,6 +60,15 @@ export function QuizCard({ type, question, options, correctAnswer, explanation, 
             {/* Question Area */}
             <div className="flex-1 flex flex-col justify-center px-8 py-12">
                 <div className="max-w-2xl mx-auto w-full">
+                    {/* Source Label */}
+                    {source && (
+                        <div className="mb-4 text-center">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground/80 uppercase tracking-widest bg-muted/50 px-3 py-1 rounded-full">
+                                {source}
+                            </span>
+                        </div>
+                    )}
+
                     {/* Quiz type label */}
                     <div className="mb-6 text-center">
                         <span className={cn(
