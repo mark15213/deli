@@ -280,22 +280,13 @@ class RunnerService:
             logger.error(f"Lens summary failed: {e}")
             summary_artifact = Artifact(lens_key="default_summary", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
         
-        # 5. Run Profiler Lens
-        profiler_lens = get_profiler_lens()
-        start_time = time.time()
-        await self._log_event(source.id, "lens_started", "running", lens_key="profiler_meta", message="Starting lens profiling")
-        await self.db.commit()  # Commit so log is visible immediately
-        try:
-            profiler_artifact = await self.run_lens(source_data, profiler_lens)
-            duration_ms = int((time.time() - start_time) * 1000)
-            await self._update_lens_log(source.id, "profiler_meta", "completed",
-                                       message="Lens suggestions generated", duration_ms=duration_ms)
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            await self._update_lens_log(source.id, "profiler_meta", "failed",
-                                       message=str(e), duration_ms=duration_ms)
-            logger.error(f"Lens profiler failed: {e}")
-            profiler_artifact = Artifact(lens_key="profiler_meta", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
+        # Create dummy artifact for suggestions so we don't break strict structure if expected
+        profiler_artifact = Artifact(
+            lens_key="profiler_meta", 
+            source_id=str(source.id), 
+            content=[], # Empty suggestions
+            created_at=time.time()
+        )
         
         # 6. Persist to SourceMaterial
         stmt_mat = select(SourceMaterial).where(SourceMaterial.source_id == source.id)
