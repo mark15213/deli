@@ -1,6 +1,4 @@
-// Decks API client
-
-const API_BASE_URL = "/api";
+import { fetchClient } from "./client";
 
 export interface Deck {
     id: string;
@@ -37,10 +35,10 @@ export interface CreateDeckRequest {
 
 export async function getDecks(subscribedOnly = false): Promise<Deck[]> {
     const url = subscribedOnly
-        ? `${API_BASE_URL}/decks?subscribed_only=true`
-        : `${API_BASE_URL}/decks`;
+        ? `/decks?subscribed_only=true`
+        : `/decks`;
 
-    const res = await fetch(url);
+    const res = await fetchClient(url);
 
     if (!res.ok) {
         throw new Error("Failed to fetch decks");
@@ -50,7 +48,7 @@ export async function getDecks(subscribedOnly = false): Promise<Deck[]> {
 }
 
 export async function getDeck(deckId: string): Promise<DeckDetail> {
-    const res = await fetch(`${API_BASE_URL}/decks/${deckId}`);
+    const res = await fetchClient(`/decks/${deckId}`);
 
     if (!res.ok) {
         throw new Error("Failed to fetch deck");
@@ -60,9 +58,8 @@ export async function getDeck(deckId: string): Promise<DeckDetail> {
 }
 
 export async function createDeck(data: CreateDeckRequest): Promise<Deck> {
-    const res = await fetch(`${API_BASE_URL}/decks`, {
+    const res = await fetchClient(`/decks`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
     });
 
@@ -74,9 +71,8 @@ export async function createDeck(data: CreateDeckRequest): Promise<Deck> {
 }
 
 export async function updateDeck(deckId: string, data: Partial<CreateDeckRequest>): Promise<Deck> {
-    const res = await fetch(`${API_BASE_URL}/decks/${deckId}`, {
+    const res = await fetchClient(`/decks/${deckId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
     });
 
@@ -88,7 +84,7 @@ export async function updateDeck(deckId: string, data: Partial<CreateDeckRequest
 }
 
 export async function deleteDeck(deckId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/decks/${deckId}`, {
+    const res = await fetchClient(`/decks/${deckId}`, {
         method: "DELETE",
     });
 
@@ -98,7 +94,7 @@ export async function deleteDeck(deckId: string): Promise<void> {
 }
 
 export async function subscribeToDeck(deckId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/decks/${deckId}/subscribe`, {
+    const res = await fetchClient(`/decks/${deckId}/subscribe`, {
         method: "POST",
     });
 
@@ -108,7 +104,7 @@ export async function subscribeToDeck(deckId: string): Promise<void> {
 }
 
 export async function unsubscribeFromDeck(deckId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/decks/${deckId}/subscribe`, {
+    const res = await fetchClient(`/decks/${deckId}/subscribe`, {
         method: "DELETE",
     });
 

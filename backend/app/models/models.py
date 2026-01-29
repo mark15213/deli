@@ -37,6 +37,9 @@ class User(Base):
     username: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
+    # Auth
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
     # FSRS global settings and daily limits
     settings: Mapped[dict] = mapped_column(JSONB, default=dict)
     

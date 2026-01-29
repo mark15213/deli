@@ -25,37 +25,29 @@ async def get_current_user(
     Get current user from JWT token.
     In dev_mode, returns mock user without requiring auth.
     """
-    # Dev mode: bypass auth and return mock user
+    # 1. Try to authenticate with token if provided
+    if token:
+        payload = verify_token(token)
+        if payload:
+            user_id: str = payload.get("sub")
+            if user_id:
+                stmt = select(User).where(User.id == user_id)
+                result = await db.execute(stmt)
+                user = result.scalar_one_or_none()
+                if user:
+                    return user
+
+    # 2. If no valid token and dev_mode is on, return mock user
     if settings.dev_mode:
         return await get_mock_user(db)
     
+    # 3. Otherwise, raise 401
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
-    if token is None:
-        raise credentials_exception
-    
-    # Verify token
-    payload = verify_token(token)
-    if payload is None:
-        raise credentials_exception
-        
-    user_id: str = payload.get("sub")
-    if user_id is None:
-        raise credentials_exception
-        
-    # Get user from DB
-    stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-    
-    if user is None:
-        raise credentials_exception
-        
-    return user
+    raise credentials_exception
 
 
 async def get_current_active_user(

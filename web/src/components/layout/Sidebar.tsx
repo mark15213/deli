@@ -2,11 +2,12 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Rss, Inbox, Layers, Brain, ChevronLeft, ChevronRight } from "lucide-react"
+import { Home, Rss, Inbox, Layers, Brain, ChevronLeft, ChevronRight, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { ThemeToggle } from "@/components/shared/ThemeToggle"
+import { useAuth } from "@/lib/auth-context"
 
 const sidebarItems = [
     {
@@ -39,6 +40,7 @@ const sidebarItems = [
 export function Sidebar() {
     const pathname = usePathname()
     const [collapsed, setCollapsed] = useState(false)
+    const { user, logout } = useAuth()
 
     return (
         <aside
@@ -86,10 +88,33 @@ export function Sidebar() {
                 </nav>
             </div>
 
-            <div className="border-t p-4">
+            <div className="border-t p-4 space-y-4">
                 <div className={cn("flex items-center gap-3", collapsed ? "justify-center" : "justify-between")}>
                     {!collapsed && <span className="text-sm text-muted-foreground">Theme</span>}
                     <ThemeToggle />
+                </div>
+
+                <div className={cn("flex items-center gap-3", collapsed ? "justify-center" : "justify-between")}>
+                    {!collapsed && (
+                        <div className="flex items-center gap-2 overflow-hidden">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium shrink-0">
+                                {user?.username?.substring(0, 2).toUpperCase() || "U"}
+                            </div>
+                            <div className="flex flex-col truncate">
+                                <span className="text-sm font-medium truncate">{user?.username}</span>
+                                <span className="text-xs text-muted-foreground truncate">{user?.email}</span>
+                            </div>
+                        </div>
+                    )}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Logout"
+                        onClick={logout}
+                        className="shrink-0"
+                    >
+                        <LogOut className="h-4 w-4" />
+                    </Button>
                 </div>
             </div>
         </aside>

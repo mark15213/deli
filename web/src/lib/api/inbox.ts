@@ -1,6 +1,4 @@
-// Inbox API client
-
-const API_BASE_URL = "/api";
+import { fetchClient } from "./client";
 
 export interface InboxCardPreview {
     id: string;
@@ -33,7 +31,7 @@ export interface InboxItem {
 }
 
 export async function getPendingItems(skip = 0, limit = 20): Promise<InboxItem[]> {
-    const res = await fetch(`${API_BASE_URL}/inbox/pending?skip=${skip}&limit=${limit}`);
+    const res = await fetchClient(`/inbox/pending?skip=${skip}&limit=${limit}`);
 
     if (!res.ok) {
         throw new Error("Failed to fetch pending items");
@@ -44,9 +42,9 @@ export async function getPendingItems(skip = 0, limit = 20): Promise<InboxItem[]
 
 export async function getPendingBySource(status?: string): Promise<InboxSourceGroup[]> {
     const url = status
-        ? `${API_BASE_URL}/inbox/sources?status=${status}`
-        : `${API_BASE_URL}/inbox/sources`;
-    const res = await fetch(url);
+        ? `/inbox/sources?status=${status}`
+        : `/inbox/sources`;
+    const res = await fetchClient(url);
 
     if (!res.ok) {
         throw new Error("Failed to fetch inbox sources");
@@ -56,7 +54,7 @@ export async function getPendingBySource(status?: string): Promise<InboxSourceGr
 }
 
 export async function approveCard(cardId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/${cardId}/approve`, {
+    const res = await fetchClient(`/inbox/${cardId}/approve`, {
         method: "POST",
     });
 
@@ -66,7 +64,7 @@ export async function approveCard(cardId: string): Promise<void> {
 }
 
 export async function rejectCard(cardId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/${cardId}/reject`, {
+    const res = await fetchClient(`/inbox/${cardId}/reject`, {
         method: "POST",
     });
 
@@ -76,23 +74,22 @@ export async function rejectCard(cardId: string): Promise<void> {
 }
 
 export async function addCardToDeck(cardId: string, deckId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/${cardId}/decks/${deckId}`, {
+    const res = await fetchClient(`/inbox/${cardId}/decks/${deckId}`, {
         method: "POST",
     });
     if (!res.ok) throw new Error("Failed to add card to deck");
 }
 
 export async function removeCardFromDeck(cardId: string, deckId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/${cardId}/decks/${deckId}`, {
+    const res = await fetchClient(`/inbox/${cardId}/decks/${deckId}`, {
         method: "DELETE",
     });
     if (!res.ok) throw new Error("Failed to remove card from deck");
 }
 
 export async function moveCard(cardId: string, targetDeckId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/${cardId}/move`, {
+    const res = await fetchClient(`/inbox/${cardId}/move`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_deck_id: targetDeckId }),
     });
 
@@ -102,9 +99,8 @@ export async function moveCard(cardId: string, targetDeckId: string): Promise<vo
 }
 
 export async function bulkApprove(cardIds: string[]): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/bulk/approve`, {
+    const res = await fetchClient(`/inbox/bulk/approve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ card_ids: cardIds }),
     });
 
@@ -114,9 +110,8 @@ export async function bulkApprove(cardIds: string[]): Promise<void> {
 }
 
 export async function bulkReject(cardIds: string[]): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/inbox/bulk/reject`, {
+    const res = await fetchClient(`/inbox/bulk/reject`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ card_ids: cardIds }),
     });
 

@@ -1,16 +1,11 @@
 import { DetectRequest, DetectResponse, Source } from "@/types/source";
+import { fetchClient } from "./client";
 
 export type { Source } from "@/types/source";
 
-// Base API URL - assuming standard setup, adjust if env var needed
-const API_BASE_URL = "/api";
-
 export async function detectSource(input: string): Promise<DetectResponse> {
-    const res = await fetch(`${API_BASE_URL}/sources/detect`, {
+    const res = await fetchClient(`/sources/detect`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
         body: JSON.stringify({ input, check_connectivity: true } as DetectRequest),
     });
 
@@ -22,11 +17,8 @@ export async function detectSource(input: string): Promise<DetectResponse> {
 }
 
 export async function getSources(): Promise<Source[]> {
-    const res = await fetch(`${API_BASE_URL}/sources/`, {
+    const res = await fetchClient(`/sources/`, {
         method: "GET",
-        headers: {
-            "Content-Type": "application/json",
-        },
     });
 
     if (!res.ok) {
@@ -41,11 +33,8 @@ export async function createSource(data: Partial<Source>): Promise<Source> {
     // Ideally we map `data` to `SourceCreate` structure here if they differ significantly.
     // For now assuming the frontend constructs a compatible object or we pass it through.
 
-    const res = await fetch(`${API_BASE_URL}/sources/`, {
+    const res = await fetchClient(`/sources/`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
         body: JSON.stringify(data),
     });
 
@@ -71,7 +60,7 @@ export async function uploadDocument(sourceId: string, file: File): Promise<Uplo
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch(`${API_BASE_URL}/sources/${sourceId}/upload`, {
+    const res = await fetchClient(`/sources/${sourceId}/upload`, {
         method: "POST",
         body: formData,
     });
@@ -85,7 +74,7 @@ export async function uploadDocument(sourceId: string, file: File): Promise<Uplo
 }
 
 export async function deleteSource(sourceId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/sources/${sourceId}`, {
+    const res = await fetchClient(`/sources/${sourceId}`, {
         method: "DELETE",
     });
 

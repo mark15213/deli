@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Deli API"
     app_version: str = "0.1.0"
     debug: bool = False
-    dev_mode: bool = True  # Enable mock auth and seed data in development
+    dev_mode: bool = False  # Enable mock auth and seed data in development
     
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/deli"
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "your-secret-key-change-in-production"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+    refresh_token_expire_minutes: int = 60 * 24 * 30  # 30 days
     
     # FSRS
     fsrs_weights: list[float] = [
