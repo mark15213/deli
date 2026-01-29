@@ -11,8 +11,12 @@ from app.core.database import async_session_maker
 from app.core.debug_data import reseed_debug_sources
 from app.core.seed_data import reset_seed_data
 
+from app.core.logging_config import setup_logging
+
 settings = get_settings()
 
+# Initialize logging
+setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

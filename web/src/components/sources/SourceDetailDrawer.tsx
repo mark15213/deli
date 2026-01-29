@@ -165,7 +165,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
     // Defined Default Lenses
     const defaultLenses = [
         { key: 'default_summary', name: 'Summary Generation', description: 'Generates a concise summary of the paper.' },
-        { key: 'profiler_meta', name: 'Lens Profiler', description: 'Analyzes content to suggest further lenses.' },
+
         { key: 'reading_notes', name: 'Reading Notes', description: 'Generates structured Q&A notes for learning.' },
         { key: 'study_quiz', name: 'Flashcard Generator', description: 'Generates quiz questions and glossary terms.' },
     ];
@@ -294,9 +294,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                         })
                                     ) : (
                                         <div className="text-sm text-muted-foreground italic">
-                                            {getLensStatusInfo('profiler_meta').status === 'running'
-                                                ? "Analyzing for suggestions..."
-                                                : "No additional lenses suggested."}
+                                            No additional lenses suggested.
                                         </div>
                                     )}
                                 </div>

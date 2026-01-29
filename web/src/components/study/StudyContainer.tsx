@@ -52,7 +52,8 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
         if (currentIndex < cards.length - 1) {
             setCurrentIndex(currentIndex + 1)
         } else {
-            // Session complete
+            // Session complete - move past last index to show completion screen
+            setCurrentIndex(currentIndex + 1)
             onComplete?.()
         }
     }
@@ -88,6 +89,7 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                 setCurrentIndex(nextNonBatchIndex)
             } else {
                 // No more cards outside this batch
+                setCurrentIndex(cards.length)
                 onComplete?.()
             }
         } catch (error) {

@@ -2,6 +2,7 @@ import logging
 import time
 import os
 import json
+import re
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -90,7 +91,7 @@ class RunnerService:
             # Update existing log
             log.status = status
             log.event_type = "lens_completed" if status == "completed" else "lens_failed"
-            if message:
+            if message is not None:
                 log.message = message
             if duration_ms is not None:
                 log.duration_ms = duration_ms
@@ -164,7 +165,8 @@ class RunnerService:
             model_name = lens.parameters.get("model", "gemini-3-flash")
             
             # DEBUG: Log payload
-            logger.info(f"Sending to OpenAI: model={model_name}, messages={json.dumps(messages, default=str)}")
+            payload_str = json.dumps(messages, default=str)
+            logger.info(f"LLM REQUEST [lens={lens.key}]: {payload_str}")
             
             # Generate
             start_time = time.time()
@@ -175,7 +177,7 @@ class RunnerService:
                 "Authorization": f"Bearer {self.client.api_key}",
                 "Content-Type": "application/json"
             }
-            payload = {
+            request_payload = {
                 "model": model_name,
                 "messages": messages,
                 "stream": False
@@ -188,7 +190,7 @@ class RunnerService:
             
             import httpx
             async with httpx.AsyncClient(timeout=60.0) as http_client:
-                resp = await http_client.post(api_url, headers=headers, json=payload)
+                resp = await http_client.post(api_url, headers=headers, json=request_payload)
                 if resp.status_code != 200:
                     logger.error(f"OpenAI API Error {resp.status_code}: {resp.text}")
                 resp.raise_for_status()
@@ -197,15 +199,19 @@ class RunnerService:
             end_time = time.time()
             
             content = response_data["choices"][0]["message"]["content"]
+            logger.info(f"LLM RESPONSE [lens={lens.key}]: {content}")
             
             # If output_schema is JSON, try to parse
             if lens.output_schema:
                 try:
-                    # naive attempt to extract json if model wraps it in ```json ... ```
+                    # clean markdown
                     cleaned_content = content.replace("```json", "").replace("```", "").strip()
+                    # Repair invalid escapes (common in LaTeX like \theta -> \\theta)
+                    cleaned_content = re.sub(r'(?<!\\)\\(?![\\"/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', cleaned_content)
                     content = json.loads(cleaned_content)
                 except Exception as e:
                     logger.warning(f"Failed to parse JSON output for lens {lens.key}: {e}")
+                    logger.warning(f"Raw content that failed parsing: {content}")
             
             return Artifact(
                 lens_key=lens.key,
@@ -339,9 +345,16 @@ class RunnerService:
                 await self._update_lens_log(source.id, "reading_notes", "completed",
                                            message="Reading notes generated", duration_ms=duration_ms)
             except Exception as e:
+                import traceback
+                logger.error(f"Reading notes generation failed details: {traceback.format_exc()}")
+                
+                err_msg = str(e)
+                if not err_msg:
+                    err_msg = f"Error: {type(e).__name__}"
+                
                 duration_ms = int((time.time() - start_time) * 1000)
                 await self._update_lens_log(source.id, "reading_notes", "failed",
-                                           message=str(e), duration_ms=duration_ms)
+                                           message=err_msg, duration_ms=duration_ms)
         
         # 8. Run Study Quiz Lens (Flashcards)
         if self._is_paper_source(source):
@@ -460,6 +473,8 @@ class RunnerService:
             try:
                 # Try simple clean
                 cleaned = notes.replace("```json", "").replace("```", "").strip()
+                # Repair invalid escapes
+                cleaned = re.sub(r'(?<!\\)\\(?![\\"/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', cleaned)
                 notes = json.loads(cleaned)
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse string notes as JSON: {notes[:100]}...")
