@@ -57,6 +57,59 @@ class RunnerService:
         )
         self.db.add(log)
         # Don't commit here - let caller handle transaction
+        return log
+    
+    async def _update_lens_log(
+        self,
+        source_id: UUID,
+        lens_key: str,
+        status: str,
+        message: str = None,
+        duration_ms: int = None,
+        extra_data: dict = None
+    ):
+        """
+        Update an existing lens log entry instead of creating a new one.
+        This prevents duplicate log entries for the same lens execution.
+        """
+        # Find the most recent running log for this lens
+        stmt = (
+            select(SourceLog)
+            .where(
+                SourceLog.source_id == source_id,
+                SourceLog.lens_key == lens_key,
+                SourceLog.status == "running"
+            )
+            .order_by(SourceLog.created_at.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        log = result.scalar_one_or_none()
+        
+        if log:
+            # Update existing log
+            log.status = status
+            log.event_type = "lens_completed" if status == "completed" else "lens_failed"
+            if message:
+                log.message = message
+            if duration_ms is not None:
+                log.duration_ms = duration_ms
+            if extra_data:
+                log.extra_data = extra_data
+        else:
+            # Fallback: create new log if no running log found
+            log = SourceLog(
+                source_id=source_id,
+                event_type="lens_completed" if status == "completed" else "lens_failed",
+                status=status,
+                lens_key=lens_key,
+                message=message,
+                duration_ms=duration_ms,
+                extra_data=extra_data or {}
+            )
+            self.db.add(log)
+        
+        return log
 
     async def run_lens(self, source_data: SourceData, lens: Lens) -> Artifact:
         """
@@ -213,15 +266,16 @@ class RunnerService:
         summary_lens = get_default_summary_lens()
         start_time = time.time()
         await self._log_event(source.id, "lens_started", "running", lens_key="default_summary", message="Starting summary generation")
+        await self.db.commit()  # Commit so log is visible immediately
         try:
             summary_artifact = await self.run_lens(source_data, summary_lens)
             duration_ms = int((time.time() - start_time) * 1000)
-            await self._log_event(source.id, "lens_completed", "completed", lens_key="default_summary", 
-                                 message="Summary generated successfully", duration_ms=duration_ms)
+            await self._update_lens_log(source.id, "default_summary", "completed", 
+                                       message="Summary generated successfully", duration_ms=duration_ms)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            await self._log_event(source.id, "lens_failed", "failed", lens_key="default_summary",
-                                 message=str(e), duration_ms=duration_ms)
+            await self._update_lens_log(source.id, "default_summary", "failed",
+                                       message=str(e), duration_ms=duration_ms)
             logger.error(f"Lens summary failed: {e}")
             summary_artifact = Artifact(lens_key="default_summary", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
         
@@ -229,15 +283,16 @@ class RunnerService:
         profiler_lens = get_profiler_lens()
         start_time = time.time()
         await self._log_event(source.id, "lens_started", "running", lens_key="profiler_meta", message="Starting lens profiling")
+        await self.db.commit()  # Commit so log is visible immediately
         try:
             profiler_artifact = await self.run_lens(source_data, profiler_lens)
             duration_ms = int((time.time() - start_time) * 1000)
-            await self._log_event(source.id, "lens_completed", "completed", lens_key="profiler_meta",
-                                 message="Lens suggestions generated", duration_ms=duration_ms)
+            await self._update_lens_log(source.id, "profiler_meta", "completed",
+                                       message="Lens suggestions generated", duration_ms=duration_ms)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            await self._log_event(source.id, "lens_failed", "failed", lens_key="profiler_meta",
-                                 message=str(e), duration_ms=duration_ms)
+            await self._update_lens_log(source.id, "profiler_meta", "failed",
+                                       message=str(e), duration_ms=duration_ms)
             logger.error(f"Lens profiler failed: {e}")
             profiler_artifact = Artifact(lens_key="profiler_meta", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
         
@@ -285,15 +340,16 @@ class RunnerService:
         if self._is_paper_source(source):
             start_time = time.time()
             await self._log_event(source.id, "lens_started", "running", lens_key="reading_notes", message="Generating reading notes")
+            await self.db.commit()  # Commit so log is visible immediately
             try:
                 await self._generate_reading_notes(source, source_data, source_material)
                 duration_ms = int((time.time() - start_time) * 1000)
-                await self._log_event(source.id, "lens_completed", "completed", lens_key="reading_notes",
-                                     message="Reading notes generated", duration_ms=duration_ms)
+                await self._update_lens_log(source.id, "reading_notes", "completed",
+                                           message="Reading notes generated", duration_ms=duration_ms)
             except Exception as e:
                 duration_ms = int((time.time() - start_time) * 1000)
-                await self._log_event(source.id, "lens_failed", "failed", lens_key="reading_notes",
-                                     message=str(e), duration_ms=duration_ms)
+                await self._update_lens_log(source.id, "reading_notes", "failed",
+                                           message=str(e), duration_ms=duration_ms)
         
         await self.db.commit()
         logger.info(f"Finished processing source {source_id}")

@@ -81,11 +81,7 @@ async def create_source(
         logger.info(f"[API] Starting background processing for source {source.id}")
         # Create task but don't await it - it will run in background
         asyncio.create_task(process_paper_background(source.id))
-        logger.info(f"[API] Background task created for source {source.id}")
-
-
-
-    return source
+        logger.info(f"[API] Background task created for source {source.id}\")\n          \n    return source
 
 @router.get("/{source_id}", response_model=SourceResponse)
 async def get_source(
