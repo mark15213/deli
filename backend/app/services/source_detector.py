@@ -93,10 +93,57 @@ class SourceDetector:
         )
 
     def _handle_arxiv(self, url: str) -> DetectResponse:
+        import xml.etree.ElementTree as ET
+        
+        # Extract ID
+        # Matches: arxiv.org/abs/2310.00001 or arxiv.org/pdf/2310.00001.pdf
+        arxiv_id = None
+        match = re.search(r"arxiv\.org/(?:abs|pdf)/(\d+\.\d+)", url)
+        if match:
+            arxiv_id = match.group(1)
+        
+        title = "Arxiv Paper"
+        description = None
+        authors = []
+        
+        if arxiv_id:
+            try:
+                api_url = f"http://export.arxiv.org/api/query?id_list={arxiv_id}"
+                resp = requests.get(api_url, timeout=5)
+                if resp.status_code == 200:
+                    root = ET.fromstring(resp.content)
+                    # Atom namespace
+                    ns = {'atom': 'http://www.w3.org/2005/Atom'}
+                    entry = root.find('atom:entry', ns)
+                    if entry:
+                        title_elem = entry.find('atom:title', ns)
+                        if title_elem is not None:
+                            title = title_elem.text.strip().replace('\n', ' ')
+                            
+                        summary_elem = entry.find('atom:summary', ns)
+                        if summary_elem is not None:
+                            description = summary_elem.text.strip().replace('\n', ' ')
+                            
+                        for author in entry.findall('atom:author', ns):
+                            name = author.find('atom:name', ns)
+                            if name is not None:
+                                authors.append(name.text)
+            except Exception as e:
+                print(f"Error fetching arxiv data: {e}")
+
+        # Format description with authors if available
+        author_str = None
+        if authors:
+            author_str = ", ".join(authors[:3])
+            if len(authors) > 3:
+                author_str += " et al."
+
         return DetectResponse(
             detected_type=SourceType.ARXIV_PAPER,
             metadata=PreviewMetadata(
-                title="Arxiv Paper",
+                title=title,
+                description=description,
+                author=author_str,
                 url=url,
                 icon_url="https://arxiv.org/favicon.ico"
             ),

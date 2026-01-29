@@ -100,13 +100,22 @@ class SourceCreate(BaseModel):
     connection_config: Dict[str, Any] # Loose typing for API input, validated by Logic
     ingestion_rules: Dict[str, Any]
 
+class SourceMaterialResponse(BaseModel):
+    id: UUID
+    title: Optional[str]
+    rich_data: Dict[str, Any]
+    
+    class Config:
+        from_attributes = True
+
 class SourceResponse(BaseModel):
     id: UUID
     name: str
     type: SourceType
-    ingestion_rules: Dict[str, Any] # connection_config usually sensitive, maybe masked
+    ingestion_rules: Dict[str, Any]
     status: str
     last_synced_at: Optional[datetime]
+    source_materials: List[SourceMaterialResponse] = []
     
     class Config:
         from_attributes = True

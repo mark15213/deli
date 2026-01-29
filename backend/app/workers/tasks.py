@@ -2,38 +2,36 @@
 import asyncio
 from uuid import UUID
 
-from asgiref.sync import async_to_sync
+
 from sqlalchemy import select
 
-from app.core.celery_app import celery_app
 from app.core.database import async_session_maker
 from app.services.ingestion_service import IngestionService
 from app.services.generator_service import GeneratorService
-from app.models import SyncConfig, OAuthConnection
+from app.models import Source, OAuthConnection
 from app.models import Card, CardStatus
 
 
-@celery_app.task
-def sync_notion_content(sync_config_id: str):
+# Converted from Celery task to standard async function
+async def sync_notion_content(source_id: str):
     """
-    Celery task to sync content based on a SyncConfig.
-    Wraps async logic in sync task.
+    Background task to sync content based on a Source.
     """
-    async_to_sync(run_sync_logic)(sync_config_id)
+    await run_sync_logic(source_id)
 
 
-async def run_sync_logic(sync_config_id: str):
+async def run_sync_logic(source_id: str):
     """Async implementation of sync logic."""
     async with async_session_maker() as session:
-        # 1. Get SyncConfig
-        config = await session.get(SyncConfig, UUID(sync_config_id))
-        if not config:
+        # 1. Get Source
+        source = await session.get(Source, UUID(source_id))
+        if not source:
             return
 
         # 2. Find Linked OAuthConnection
         # Simplistic assumption: User has 1 notion connection.
         stmt = select(OAuthConnection).where(
-            OAuthConnection.user_id == config.user_id,
+            OAuthConnection.user_id == source.user_id,
             OAuthConnection.provider == "notion"
         )
         result = await session.execute(stmt)
@@ -46,7 +44,7 @@ async def run_sync_logic(sync_config_id: str):
         # 3. Run Ingestion
         ingestion = IngestionService(session)
         # Returns chunks with source_material metadata
-        chunks = await ingestion.sync_config(config, connection)
+        chunks = await ingestion.sync_source(source, connection)
         
         # 4. Process Chunks --> Generate Pending Cards
         generator = GeneratorService(session)
@@ -56,7 +54,7 @@ async def run_sync_logic(sync_config_id: str):
             # source_metadata needs to align with what GeneratorService expects
             
             source_meta = {
-                "user_id": str(config.user_id),
+                "user_id": str(source.user_id),
                 "source_material_id": chunk["source"]["source_material_id"],
                 "chunk_index": chunk["source"]["chunk_index"]
             }

@@ -14,22 +14,29 @@ from app.core.security import verify_token
 
 settings = get_settings()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token", auto_error=False)
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
 ) -> User:
     """
     Get current user from JWT token.
-    Validates token and retrieves user from database.
+    In dev_mode, returns mock user without requiring auth.
     """
+    # Dev mode: bypass auth and return mock user
+    if settings.dev_mode:
+        return await get_mock_user(db)
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    if token is None:
+        raise credentials_exception
     
     # Verify token
     payload = verify_token(token)

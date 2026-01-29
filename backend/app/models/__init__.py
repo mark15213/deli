@@ -2,7 +2,6 @@
 from app.models.models import (
     User,
     OAuthConnection,
-    SyncConfig,
     SourceMaterial,
     Deck,
     Card,
@@ -12,12 +11,13 @@ from app.models.models import (
     FSRSState,
     ReviewLog,
     Source,
+    SourceLog,
+    card_decks,
 )
 
 __all__ = [
     "User",
     "OAuthConnection",
-    "SyncConfig",
     "SourceMaterial",
     "Deck",
     "Card",
@@ -27,4 +27,6 @@ __all__ = [
     "FSRSState",
     "ReviewLog",
     "Source",
+    "SourceLog",
+    "card_decks",
 ]

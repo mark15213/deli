@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import 'katex/dist/katex.min.css';
 import { MainLayout } from "@/components/layout/MainLayout";
 
 export const metadata: Metadata = {

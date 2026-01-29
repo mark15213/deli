@@ -85,27 +85,39 @@ export function QuickAddModal({ onSourceAdded }: { onSourceAdded?: () => void })
         if (!detectionResult) return
 
         setIsSubmitting(true)
+
+        // Close modal immediately for better UX
+        setOpen(false)
+        const submittedName = sourceName
+
+        // Reset form state
+        setInput("")
+        setDetectionResult(null)
+        setSourceName("")
+        setConfig({})
+
         try {
-            await createSource({
-                name: sourceName,
+            // Submit in background without blocking UI
+            createSource({
+                name: submittedName,
                 type: detectionResult.detected_type,
                 connection_config: {
-                    // This varies by type, for now hacking generic mapping or assuming backend handles 'url' in config
-                    // Ideally we map properly. Backend 'connection_config' is JSONB.
-                    // For SourceCreate, we need to pass a dict.
-                    // Let's assume for now we pass 'url' and whatever config we have.
                     url: detectionResult.metadata.url || input,
+                    author: detectionResult.metadata.author,
                     ...config
                 },
-                ingestion_rules: config // Using config as ingestion rules for now
+                ingestion_rules: config
+            }).then(() => {
+                // Refresh sources list after successful creation
+                if (onSourceAdded) onSourceAdded()
+            }).catch((error) => {
+                console.error("Failed to create source:", error)
+                // Could show error toast here
+            }).finally(() => {
+                setIsSubmitting(false)
             })
-            setOpen(false)
-            setInput("")
-            setDetectionResult(null)
-            if (onSourceAdded) onSourceAdded()
         } catch (error) {
             console.error(error)
-        } finally {
             setIsSubmitting(false)
         }
     }
@@ -157,6 +169,11 @@ export function QuickAddModal({ onSourceAdded }: { onSourceAdded?: () => void })
                                         onChange={(e) => setSourceName(e.target.value)}
                                         className="font-medium h-8"
                                     />
+                                    {detectionResult.metadata.author && (
+                                        <p className="text-xs text-muted-foreground font-medium">
+                                            {detectionResult.metadata.author}
+                                        </p>
+                                    )}
                                     <p className="text-sm text-muted-foreground line-clamp-2">
                                         {detectionResult.metadata.description}
                                     </p>

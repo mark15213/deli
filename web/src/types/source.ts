@@ -91,6 +91,22 @@ export type IngestionRules =
 
 // --- Source Entity ---
 
+export interface SourceMaterial {
+    id: string;
+    title?: string;
+    rich_data: {
+        summary?: string;
+        suggestions?: Array<{
+            key: string;
+            name: string;
+            description: string;
+            reason: string;
+        }>;
+        lenses?: Record<string, any>; // Results of other lenses
+        [key: string]: any;
+    };
+}
+
 export interface Source {
     id: string;
     user_id: string;
@@ -101,6 +117,7 @@ export interface Source {
     status: 'ACTIVE' | 'PAUSED' | 'ERROR';
     last_synced_at?: string;
     error_log?: string;
+    source_materials?: SourceMaterial[];
 }
 
 // --- Detection Types ---
