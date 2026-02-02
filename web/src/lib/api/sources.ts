@@ -17,7 +17,7 @@ export async function detectSource(input: string): Promise<DetectResponse> {
 }
 
 export async function getSources(): Promise<Source[]> {
-    const res = await fetchClient(`/sources/`, {
+    const res = await fetchClient(`/sources`, {
         method: "GET",
     });
 
@@ -33,7 +33,7 @@ export async function createSource(data: Partial<Source>): Promise<Source> {
     // Ideally we map `data` to `SourceCreate` structure here if they differ significantly.
     // For now assuming the frontend constructs a compatible object or we pass it through.
 
-    const res = await fetchClient(`/sources/`, {
+    const res = await fetchClient(`/sources`, {
         method: "POST",
         body: JSON.stringify(data),
     });

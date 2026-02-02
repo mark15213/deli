@@ -45,6 +45,7 @@ app = FastAPI(
     version=settings.app_version,
     description="Deli API - Transform Notion notes into spaced repetition quizzes",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 # CORS middleware

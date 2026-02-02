@@ -228,8 +228,11 @@ class ReviewLog(Base):
 
 class Source(Base):
     """
-    Core Source entity separating Connection (static) and Logic (dynamic).
-    Replaces legacy SyncConfig.
+    Core Source entity for content ingestion.
+    
+    Category Types:
+    - SNAPSHOT: One-time parse (papers, articles, tweets, repos)
+    - SUBSCRIPTION: Periodic sync (RSS, HF Daily, author blogs)
     """
     __tablename__ = "sources"
 
@@ -237,18 +240,25 @@ class Source(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     
     name: Mapped[str] = mapped_column(String(255))
-    type: Mapped[str] = mapped_column(String(50)) # e.g. 'NOTION_KB', 'X_SOCIAL'
+    type: Mapped[str] = mapped_column(String(50))  # e.g. 'ARXIV_PAPER', 'RSS_FEED'
+    category: Mapped[str] = mapped_column(String(20), default="SNAPSHOT")  # SNAPSHOT | SUBSCRIPTION
     
-    # Connection Config (Encrypted/Sensitive)
+    # Connection Config (Static)
     # Stores: url, auth_token, api_keys
     connection_config: Mapped[dict] = mapped_column(JSONB, default=dict)
     
     # Ingestion Rules (Dynamic/User Tunable)
-    # Stores: filters, prompts, frequency
+    # Stores: lens configs, prompts
     ingestion_rules: Mapped[dict] = mapped_column(JSONB, default=dict)
     
-    status: Mapped[str] = mapped_column(String(20), default="ACTIVE") # ACTIVE, PAUSED, ERROR
+    # Subscription-specific config (only for SUBSCRIPTION category)
+    # Stores: sync_frequency, filters, etc. - schema varies by type
+    subscription_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    
+    # Status: PENDING, PROCESSING, COMPLETED (snapshot), ACTIVE, PAUSED, ERROR
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # For subscriptions
     error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

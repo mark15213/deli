@@ -16,9 +16,9 @@ from app.schemas.source_schemas import SourceType
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
-@router.get("/", response_model=List[SourceResponse])
+@router.get("", response_model=List[SourceResponse])
 async def get_sources(
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
@@ -34,56 +34,74 @@ async def get_sources(
 @router.post("/detect", response_model=DetectResponse)
 async def detect_source_type(
     detect_in: DetectRequest,
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Analyze a URL or text to detect source type and metadata.
     """
     return source_detector.detect(detect_in.input, check_connectivity=detect_in.check_connectivity)
 
-@router.post("/", response_model=SourceResponse)
+@router.post("", response_model=SourceResponse)
 async def create_source(
     *,
     db: AsyncSession = Depends(deps.get_db),
     source_in: SourceCreate,
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Create new source.
+    Automatically determines category based on type and triggers appropriate processing.
     """
     import logging
     import asyncio
-    from sqlalchemy.orm import make_transient_to_detached
+    from datetime import datetime, timedelta
+    from sqlalchemy.orm import selectinload
     from app.background.paper_tasks import process_paper_background
+    from app.schemas.source_schemas import get_category_for_type, SourceCategory
     
     logger = logging.getLogger(__name__)
+    
+    # Determine category from type
+    category = get_category_for_type(source_in.type)
+    
+    # Set initial status based on category
+    if category == SourceCategory.SNAPSHOT:
+        initial_status = "PENDING"
+        next_sync = None
+    else:
+        initial_status = "ACTIVE"
+        # Calculate next sync time based on subscription config
+        sync_freq = (source_in.subscription_config or {}).get("sync_frequency", "DAILY")
+        freq_hours = {"HOURLY": 1, "DAILY": 24, "WEEKLY": 168}
+        next_sync = datetime.utcnow() + timedelta(hours=freq_hours.get(sync_freq, 24))
     
     source = Source(
         id=uuid.uuid4(),
         user_id=current_user.id,
         name=source_in.name,
-        type=source_in.type.value, # Store as string enum value
+        type=source_in.type.value,
+        category=category.value,
         connection_config=source_in.connection_config,
         ingestion_rules=source_in.ingestion_rules,
-        status="ACTIVE"
+        subscription_config=source_in.subscription_config,
+        status=initial_status,
+        next_sync_at=next_sync,
     )
     db.add(source)
     await db.commit()
     
-    # Re-fetch with eager loading to avoid lazy load issues
-    from sqlalchemy.orm import selectinload
+    # Re-fetch with eager loading
     stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source.id)
     result = await db.execute(stmt)
     source = result.scalar_one()
     
-    # Trigger ingest for Papers using asyncio background task
-    if source.type == SourceType.ARXIV_PAPER.value or source.type == SourceType.ARXIV_PAPER:
-        logger.info(f"[API] Starting background processing for source {source.id}")
-        # Create task but don't await it - it will run in background
-        asyncio.create_task(process_paper_background(source.id))
-        logger.info(f"[API] Background task created for source {source.id}")
-
-
+    # Trigger processing for snapshot sources
+    if category == SourceCategory.SNAPSHOT:
+        # For papers and other snapshot types, trigger background processing
+        if source.type in [SourceType.ARXIV_PAPER.value, "ARXIV_PAPER"]:
+            logger.info(f"[API] Starting background processing for paper source {source.id}")
+            asyncio.create_task(process_paper_background(source.id))
+        # TODO: Add handlers for other snapshot types (WEB_ARTICLE, GITHUB_REPO, etc.)
 
     return source
 
@@ -92,7 +110,7 @@ async def get_source(
     *,
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Get source by ID.
@@ -110,7 +128,7 @@ async def update_source(
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
     source_in: SourceCreate, # Can be Partial update schema in future
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Update source.
@@ -146,7 +164,7 @@ async def delete_source(
     *,
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Delete source.
@@ -166,7 +184,7 @@ async def sync_source(
     *,
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Trigger source sync manually.
@@ -187,7 +205,7 @@ async def upload_document(
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
     file: UploadFile = File(...),
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Upload a document (CSV, MD, TXT) to parse into cards.
@@ -282,7 +300,7 @@ async def get_source_logs(
     *,
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
-    current_user: User = Depends(deps.get_mock_user),
+    current_user: User = Depends(deps.get_current_user),
     limit: int = 50,
 ) -> Any:
     """
