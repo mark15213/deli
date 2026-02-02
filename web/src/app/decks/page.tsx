@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Plus, Search, SlidersHorizontal, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useState, useEffect } from "react"
-import { getDecks, createDeck, subscribeToDeck, unsubscribeFromDeck, type Deck } from "@/lib/api/decks"
+import { getDecks, createDeck, deleteDeck, subscribeToDeck, unsubscribeFromDeck, type Deck } from "@/lib/api/decks"
 import {
     Dialog,
     DialogContent,
@@ -78,6 +78,16 @@ export default function DecksPage() {
             ))
         } catch (error) {
             console.error("Failed to update subscription:", error)
+        }
+    }
+
+    const handleDelete = async (deckId: string) => {
+        try {
+            await deleteDeck(deckId)
+            setDecks(decks.filter(d => d.id !== deckId))
+        } catch (error) {
+            console.error("Failed to delete deck:", error)
+            alert("Failed to delete deck")
         }
     }
 
@@ -158,6 +168,7 @@ export default function DecksPage() {
                     <DeckList
                         decks={filteredDecks}
                         onSubscribeChange={handleSubscribeChange}
+                        onDelete={handleDelete}
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-64 text-center">

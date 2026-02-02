@@ -4,8 +4,9 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Switch } from "@/components/ui/switch"
 import { ProgressBar } from "@/components/shared/ProgressBar"
-import { FileText, RotateCw, HelpCircle, Clock, Star } from "lucide-react"
+import { FileText, RotateCw, HelpCircle, Clock, Star, Trash2 } from "lucide-react"
 import Link from "next/link"
+import { Button } from "@/components/ui/button"
 
 interface DeckCardProps {
     id: string
@@ -18,6 +19,7 @@ interface DeckCardProps {
     masteryPercentage: number
     isSubscribed: boolean
     onSubscribeChange?: (subscribed: boolean) => void
+    onDelete?: () => void
 }
 
 export function DeckCard({
@@ -30,7 +32,8 @@ export function DeckCard({
     lastReviewedAt,
     masteryPercentage,
     isSubscribed,
-    onSubscribeChange
+    onSubscribeChange,
+    onDelete
 }: DeckCardProps) {
     const [subscribed, setSubscribed] = useState(isSubscribed)
 
@@ -75,6 +78,24 @@ export function DeckCard({
                             className="scale-75"
                         />
                     </div>
+
+                    {/* Delete Button */}
+                    {onDelete && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-3 left-3 h-8 w-8 bg-background/90 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (confirm(`Delete "${title}"? This cannot be undone.`)) {
+                                    onDelete()
+                                }
+                            }}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    )}
                 </div>
 
                 {/* Content */}
