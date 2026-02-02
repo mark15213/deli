@@ -17,6 +17,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { Source } from "@/types/source"
 import { deleteSource } from "@/lib/api/sources"
+import { fetchClient } from "@/lib/api/client"
 import React from "react"
 import { LensPipelineCard, LensStatus } from "./LensPipelineCard"
 
@@ -57,14 +58,14 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
 
             try {
                 // Fetch Source
-                const sourceRes = await fetch(`/api/sources/${sourceId}`);
+                const sourceRes = await fetchClient(`/sources/${sourceId}`);
                 if (sourceRes.ok) {
                     const sourceData = await sourceRes.json();
                     setSource(sourceData);
                 }
 
                 // Fetch Logs for status updates
-                const logsRes = await fetch(`/api/sources/${sourceId}/logs`);
+                const logsRes = await fetchClient(`/sources/${sourceId}/logs`);
                 if (logsRes.ok) {
                     const logsData = await logsRes.json();
                     setLogs(logsData);
@@ -98,16 +99,15 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
     const handleRunLens = async (lensKey: string) => {
         if (!source) return;
         try {
-            await fetch("/api/paper/run-lens", {
+            await fetchClient("/paper/run-lens", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     source_id: source.id,
                     lens_key: lensKey
                 })
             });
             // Trigger an immediate re-fetch
-            const res = await fetch(`/api/sources/${source.id}/logs`);
+            const res = await fetchClient(`/sources/${source.id}/logs`);
             const data = await res.json();
             setLogs(data);
         } catch (e) {
