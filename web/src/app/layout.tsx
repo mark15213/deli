@@ -5,7 +5,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
-    title: "Deli Admin",
+    title: "Gulp",
     description: "Manage your knowledge quizzes",
 };
 

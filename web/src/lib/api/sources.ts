@@ -105,3 +105,15 @@ export async function updateSource(sourceId: string, data: Partial<Source>): Pro
 
     return res.json();
 }
+
+export async function getChildSources(parentId: string): Promise<Source[]> {
+    const res = await fetchClient(`/sources/${parentId}/children`, {
+        method: "GET",
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to fetch child sources");
+    }
+
+    return res.json();
+}

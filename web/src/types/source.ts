@@ -138,6 +138,8 @@ export interface Source {
     last_synced_at?: string;
     next_sync_at?: string;
     error_log?: string;
+    parent_source_id?: string;
+    children_count?: number;
     source_materials?: SourceMaterial[];
     created_at?: string;
 }

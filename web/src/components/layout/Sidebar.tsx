@@ -52,7 +52,7 @@ export function Sidebar() {
             <div className="flex h-16 items-center border-b px-4 justify-between">
                 {!collapsed && (
                     <span className="text-xl font-bold text-primary">
-                        Deli
+                        Gulp
                     </span>
                 )}
                 <Button

@@ -151,6 +151,8 @@ class SourceResponse(BaseModel):
     status: str
     last_synced_at: Optional[datetime]
     next_sync_at: Optional[datetime] = None
+    parent_source_id: Optional[UUID] = None
+    children_count: int = 0
     source_materials: List[SourceMaterialResponse] = []
     created_at: Optional[datetime] = None
     

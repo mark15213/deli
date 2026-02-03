@@ -400,7 +400,10 @@ class RunnerService:
             init_log.event_type = "sync_completed"
             init_log.message = "Source processing finished successfully"
             init_log.duration_ms = int((time.time() - process_start_time) * 1000) # approximate total time
-            await self.db.commit()
+        
+        # Update source status to COMPLETED
+        source.status = "COMPLETED"
+        await self.db.commit()
 
         logger.info(f"Finished processing source {source_id}")
 

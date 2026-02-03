@@ -25,11 +25,50 @@ async def get_sources(
 ) -> Any:
     """
     Retrieve current user's sources.
+    Only returns top-level sources (no parent). Child sources are accessed via parent.
     """
-    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.user_id == current_user.id).offset(skip).limit(limit)
+    from sqlalchemy import func
+    
+    # Get top-level sources only (parent_source_id is NULL)
+    stmt = (
+        select(Source)
+        .options(selectinload(Source.source_materials))
+        .where(Source.user_id == current_user.id, Source.parent_source_id == None)
+        .offset(skip).limit(limit)
+    )
     result = await db.execute(stmt)
     sources = result.scalars().all()
-    return sources
+    
+    # Add children_count to each source
+    response_sources = []
+    for source in sources:
+        # Count children
+        count_stmt = select(func.count()).select_from(Source).where(
+            Source.parent_source_id == source.id
+        )
+        count_result = await db.execute(count_stmt)
+        children_count = count_result.scalar() or 0
+        
+        # Convert to dict and add children_count
+        source_dict = {
+            "id": source.id,
+            "name": source.name,
+            "type": source.type,
+            "category": source.category,
+            "connection_config": source.connection_config,
+            "ingestion_rules": source.ingestion_rules,
+            "subscription_config": source.subscription_config,
+            "status": source.status,
+            "last_synced_at": source.last_synced_at,
+            "next_sync_at": source.next_sync_at,
+            "parent_source_id": source.parent_source_id,
+            "children_count": children_count,
+            "source_materials": source.source_materials,
+            "created_at": source.created_at,
+        }
+        response_sources.append(source_dict)
+    
+    return response_sources
 
 @router.post("/detect", response_model=DetectResponse)
 async def detect_source_type(
@@ -121,6 +160,35 @@ async def get_source(
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     return source
+
+
+@router.get("/{source_id}/children", response_model=List[SourceResponse])
+async def get_child_sources(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_id: UUID,
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Get child sources for a subscription source.
+    """
+    # Verify parent source exists and belongs to user
+    parent_stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    parent_result = await db.execute(parent_stmt)
+    parent = parent_result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    # Get child sources
+    stmt = (
+        select(Source)
+        .options(selectinload(Source.source_materials))
+        .where(Source.parent_source_id == source_id)
+        .order_by(Source.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    children = result.scalars().all()
+    return children
 
 @router.put("/{source_id}", response_model=SourceResponse)
 async def update_source(
@@ -267,10 +335,11 @@ async def sync_source(
                 existing_paper = existing_paper_result.scalar_one_or_none()
                 
                 if not existing_paper:
-                    # Create new paper source
+                    # Create new paper source with parent reference
                     paper_source = Source(
                         id=uuid.uuid4(),
                         user_id=current_user.id,
+                        parent_source_id=source_id,  # Link to subscription source
                         name=item.title,
                         type="ARXIV_PAPER",
                         category="SNAPSHOT",
@@ -283,7 +352,7 @@ async def sync_source(
                     
                     # Queue for processing after commit
                     papers_to_process.append(paper_source.id)
-                    logger.info(f"Created paper source {paper_source.id} for {arxiv_url}")
+                    logger.info(f"Created paper source {paper_source.id} for {arxiv_url} (parent: {source_id})")
         
         # Update source sync time
         source.last_synced_at = datetime.utcnow()
