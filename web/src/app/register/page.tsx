@@ -13,6 +13,7 @@ export default function RegisterPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [inviteCode, setInviteCode] = useState("");
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
@@ -29,13 +30,19 @@ export default function RegisterPage() {
             return;
         }
 
+        if (!inviteCode) {
+            setError("Invite code is required");
+            setIsLoading(false);
+            return;
+        }
+
         try {
             const res = await fetch("http://localhost:8000/api/v1/auth/register", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email, password, invite_code: inviteCode }),
             });
 
             if (!res.ok) {
@@ -94,6 +101,17 @@ export default function RegisterPage() {
                                 required
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="invite-code">Invite Code</Label>
+                            <Input
+                                id="invite-code"
+                                type="text"
+                                placeholder="Enter invite code"
+                                required
+                                value={inviteCode}
+                                onChange={(e) => setInviteCode(e.target.value)}
                             />
                         </div>
                         {error && <p className="text-sm text-red-500 text-center">{error}</p>}

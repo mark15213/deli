@@ -105,7 +105,15 @@ async def register(
     user_in: UserCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a new user."""
+    """Register a new user with invite code."""
+    # Validate invite code
+    VALID_INVITE_CODE = "5566"
+    if user_in.invite_code != VALID_INVITE_CODE:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid invite code",
+        )
+    
     # Check existing user
     stmt = select(User).where(User.email == user_in.email)
     result = await db.execute(stmt)
