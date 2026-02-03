@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
+import { getApiUrl } from "@/lib/api/config";
 
 export default function RegisterPage() {
     const [email, setEmail] = useState("");
@@ -37,7 +38,7 @@ export default function RegisterPage() {
         }
 
         try {
-            const res = await fetch("http://localhost:8000/api/v1/auth/register", {
+            const res = await fetch(getApiUrl("/auth/register"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

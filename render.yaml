@@ -1,0 +1,25 @@
+# Render deployment configuration
+# https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: gulp-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gulp-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEV_MODE
+        value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+
+databases:
+  - name: gulp-db
+    databaseName: gulp
+    user: gulp
