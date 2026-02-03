@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
+import { getApiUrl } from "@/lib/api/config";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -26,7 +27,7 @@ export default function LoginPage() {
         setIsLoading(true);
 
         try {
-            const res = await fetch("http://localhost:8000/api/v1/auth/login", {
+            const res = await fetch(getApiUrl("/auth/login"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -103,7 +104,7 @@ export default function LoginPage() {
                     {/* Notion Login Link Placeholder if needed */}
                     <div className="text-xs text-gray-400 mt-4">
                         Or
-                        <Link href="http://localhost:8000/api/v1/auth/notion/login" className="ml-1 hover:text-gray-600">
+                        <Link href={getApiUrl("/auth/notion/login")} className="ml-1 hover:text-gray-600">
                             login with Notion (legacy)
                         </Link>
                     </div>

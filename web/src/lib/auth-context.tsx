@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getApiUrl } from "@/lib/api/config";
 
 interface User {
     id: string;
@@ -35,7 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchUser = async (token: string) => {
         try {
-            const res = await fetch("http://localhost:8000/api/v1/auth/me", {
+            const res = await fetch(getApiUrl("/auth/me"), {
                 headers: {
                     "Authorization": `Bearer ${token}`
                 }
