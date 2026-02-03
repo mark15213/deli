@@ -259,6 +259,21 @@ async def sync_source(
     Trigger source sync manually for subscription sources.
     Fetches new items and creates source materials.
     """
+    # Get source
+    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    result = await db.execute(stmt)
+    source = result.scalar_one_or_none()
+    
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    return await sync_source_internal(db, source)
+
+
+async def sync_source_internal(db: AsyncSession, source: Source) -> dict:
+    """
+    Internal sync function - can be called by API or scheduler.
+    """
     from app.subscriptions.registry import subscription_registry
     from app.models.models import SourceMaterial
     from datetime import datetime
@@ -268,17 +283,9 @@ async def sync_source(
     
     logger = logging.getLogger(__name__)
     
-    # Get source
-    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
-    result = await db.execute(stmt)
-    source = result.scalar_one_or_none()
-    
-    if not source:
-        raise HTTPException(status_code=404, detail="Source not found")
-    
     # Check if it's a subscription type
     if not subscription_registry.is_subscription_type(source.type):
-        raise HTTPException(status_code=400, detail="Source is not a subscription type")
+        return {"status": "error", "error": "Source is not a subscription type"}
     
     try:
         # Get fetcher and config
@@ -300,7 +307,7 @@ async def sync_source(
         for item in items:
             # Check if already exists (unique constraint is on user_id + external_id)
             existing_stmt = select(SourceMaterial).where(
-                SourceMaterial.user_id == current_user.id,
+                SourceMaterial.user_id == source.user_id,
                 SourceMaterial.external_id == item.external_id
             )
             existing_result = await db.execute(existing_stmt)
@@ -310,8 +317,8 @@ async def sync_source(
             
             # Create source material
             material = SourceMaterial(
-                user_id=current_user.id,
-                source_id=source_id,
+                user_id=source.user_id,
+                source_id=source.id,
                 external_id=item.external_id,
                 external_url=item.url,
                 title=item.title,
@@ -327,7 +334,7 @@ async def sync_source(
                 
                 # Check if paper source already exists
                 existing_paper_stmt = select(Source).where(
-                    Source.user_id == current_user.id,
+                    Source.user_id == source.user_id,
                     Source.type == "ARXIV_PAPER",
                     Source.connection_config["url"].astext == arxiv_url
                 )
@@ -338,8 +345,8 @@ async def sync_source(
                     # Create new paper source with parent reference
                     paper_source = Source(
                         id=uuid.uuid4(),
-                        user_id=current_user.id,
-                        parent_source_id=source_id,  # Link to subscription source
+                        user_id=source.user_id,
+                        parent_source_id=source.id,  # Link to subscription source
                         name=item.title,
                         type="ARXIV_PAPER",
                         category="SNAPSHOT",
@@ -352,7 +359,7 @@ async def sync_source(
                     
                     # Queue for processing after commit
                     papers_to_process.append(paper_source.id)
-                    logger.info(f"Created paper source {paper_source.id} for {arxiv_url} (parent: {source_id})")
+                    logger.info(f"Created paper source {paper_source.id} for {arxiv_url} (parent: {source.id})")
         
         # Update source sync time
         source.last_synced_at = datetime.utcnow()

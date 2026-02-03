@@ -35,8 +35,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Startup warning: Failed to seed data: {e}")
     
+    # Start background sync scheduler
+    from app.background.sync_scheduler import start_scheduler_task, stop_scheduler
+    await start_scheduler_task()
+    print("Background sync scheduler started.")
+    
     yield
     # Shutdown
+    stop_scheduler()
     print("Shutting down...")
 
 

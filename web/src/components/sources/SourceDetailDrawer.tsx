@@ -432,6 +432,22 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                                     <span className="font-medium">{(source?.subscription_config as any)?.min_upvotes || 0}</span>
                                                 )}
                                             </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span>Auto-Sync Time</span>
+                                                {editingConfig ? (
+                                                    <select
+                                                        className="w-24 px-2 py-1 border rounded text-right"
+                                                        value={configValues.sync_hour ?? (source?.subscription_config as any)?.sync_hour ?? 20}
+                                                        onChange={(e) => setConfigValues({ ...configValues, sync_hour: parseInt(e.target.value) })}
+                                                    >
+                                                        {Array.from({ length: 24 }, (_, i) => (
+                                                            <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <span className="font-medium">{((source?.subscription_config as any)?.sync_hour ?? 20).toString().padStart(2, '0')}:00</span>
+                                                )}
+                                            </div>
                                         </>
                                     )}
                                     <div className="flex justify-between text-sm">

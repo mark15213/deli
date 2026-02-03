@@ -71,6 +71,7 @@ export type SyncFrequency = 'HOURLY' | 'DAILY' | 'WEEKLY';
 export interface BaseSubscriptionConfig {
     sync_frequency: SyncFrequency;
     enabled: boolean;
+    sync_hour?: number;  // 0-23, default 20 (8 PM)
     last_cursor?: string;
     last_synced_at?: string;
 }
