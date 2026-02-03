@@ -101,6 +101,7 @@ class RSSFetcher(BaseFetcher):
 class HFDailyFetcher(BaseFetcher):
     """
     Fetcher for HuggingFace Daily Papers.
+    Uses httpx for better proxy support.
     """
     
     HF_PAPERS_API = "https://huggingface.co/api/daily_papers"
@@ -112,14 +113,26 @@ class HFDailyFetcher(BaseFetcher):
         since_cursor: Optional[str] = None
     ) -> Tuple[List[FetchedItem], Optional[str]]:
         """Fetch papers from HuggingFace Daily Papers."""
+        import httpx
+        import os
+        
+        logger.info(f"Starting HF Daily Papers fetch with config: max_papers={config.max_papers_per_sync}, min_upvotes={config.min_upvotes}")
+        
+        # Get proxy from environment or use default
+        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "http://127.0.0.1:7897"
+        
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.HF_PAPERS_API, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    if resp.status != 200:
-                        logger.error(f"HF API error: {resp.status}")
-                        return [], since_cursor
-                    
-                    papers = await resp.json()
+            # Use httpx with proxy
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, proxy=proxy) as client:
+                logger.info(f"Requesting {self.HF_PAPERS_API} via proxy {proxy}")
+                resp = await client.get(self.HF_PAPERS_API)
+                resp.raise_for_status()
+                papers = resp.json()
+                logger.info(f"Received {len(papers)} papers from HF API")
+            
+            # Sort by upvotes descending to get most popular first
+            # Note: upvotes is inside paper object, not at top level
+            papers = sorted(papers, key=lambda x: x.get("paper", {}).get("upvotes", 0) or 0, reverse=True)
             
             items = []
             new_cursor = since_cursor
@@ -130,11 +143,13 @@ class HFDailyFetcher(BaseFetcher):
                 
                 # Skip if we've seen this
                 if since_cursor and paper_id == since_cursor:
+                    logger.info(f"Reached cursor {since_cursor}, stopping")
                     break
                 
-                # Filter by upvotes
-                upvotes = paper.get("numUpvotes", 0)
+                # Filter by upvotes - upvotes is inside paper_data
+                upvotes = paper_data.get("upvotes", 0) or 0
                 if upvotes < config.min_upvotes:
+                    logger.debug(f"Skipping paper {paper_id} with {upvotes} upvotes (min: {config.min_upvotes})")
                     continue
                 
                 # Get arxiv URL
@@ -157,11 +172,15 @@ class HFDailyFetcher(BaseFetcher):
                 if not new_cursor:
                     new_cursor = paper_id
             
+            logger.info(f"Fetched {len(items)} items after filtering")
             return items, new_cursor if items else since_cursor
             
+        except httpx.HTTPError as e:
+            logger.error(f"HF Daily fetch HTTP error: {e}")
+            raise
         except Exception as e:
-            logger.error(f"HF Daily fetch error: {e}")
-            return [], since_cursor
+            logger.error(f"HF Daily fetch error: {e}", exc_info=True)
+            raise
     
     def get_snapshot_source_type(self) -> str:
         return "ARXIV_PAPER"

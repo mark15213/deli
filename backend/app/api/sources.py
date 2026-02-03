@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api import deps
 from app.models.models import User, Source
-from app.schemas.source_schemas import SourceCreate, SourceResponse
+from app.schemas.source_schemas import SourceCreate, SourceUpdate, SourceResponse
 from app.schemas.detect_schemas import DetectRequest, DetectResponse
 from app.services.source_detector import source_detector
 from app.schemas.source_schemas import SourceType
@@ -127,7 +127,7 @@ async def update_source(
     *,
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
-    source_in: SourceCreate, # Can be Partial update schema in future
+    source_in: SourceUpdate,
     current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
@@ -139,20 +139,21 @@ async def update_source(
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     
-    source.name = source_in.name
-    # source.type = source_in.type # Type usually doesn't change?
-    source.connection_config = source_in.connection_config
-    source.ingestion_rules = source_in.ingestion_rules
+    # Only update fields that were provided
+    if source_in.name is not None:
+        source.name = source_in.name
+    if source_in.ingestion_rules is not None:
+        source.ingestion_rules = source_in.ingestion_rules
+    if source_in.subscription_config is not None:
+        source.subscription_config = source_in.subscription_config
+    if source_in.status is not None:
+        source.status = source_in.status
     
     db.add(source)
     await db.commit()
-    # Re-fetch or refresh, but since we already have it loaded with options, a refresh might be needed if triggers changed things. 
-    # But usually just returning the object is fine if we updated fields. 
-    # However, to be safe against lazy loading triggers:
-    await db.refresh(source) 
-    # Note: simple refresh might clear relationships? 
-    # Better to re-fetch if we want to be safe or rely on the previous load being sufficient if we didn't touch relationships.
-    # Actually, let's re-fetch to be consistent.
+    await db.refresh(source)
+    
+    # Re-fetch with relationships
     stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id)
     result = await db.execute(stmt)
     source = result.scalar_one()
@@ -187,11 +188,123 @@ async def sync_source(
     current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
-    Trigger source sync manually.
+    Trigger source sync manually for subscription sources.
+    Fetches new items and creates source materials.
     """
-    # This would trigger a Celery task or background job
-    # For now just return mock
-    return {"status": "sync_started", "job_id": "mock-job-id"}
+    from app.subscriptions.registry import subscription_registry
+    from app.models.models import SourceMaterial
+    from datetime import datetime
+    import asyncio
+    import logging
+    from app.background.paper_tasks import process_paper_background
+    
+    logger = logging.getLogger(__name__)
+    
+    # Get source
+    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    result = await db.execute(stmt)
+    source = result.scalar_one_or_none()
+    
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    # Check if it's a subscription type
+    if not subscription_registry.is_subscription_type(source.type):
+        raise HTTPException(status_code=400, detail="Source is not a subscription type")
+    
+    try:
+        # Get fetcher and config
+        fetcher = subscription_registry.create_fetcher(source.type)
+        config = subscription_registry.parse_config(
+            source.type, 
+            source.subscription_config or {}
+        )
+        
+        # Fetch new items
+        items, new_cursor = await fetcher.fetch_new_items(
+            config=config,
+            connection_config=source.connection_config or {},
+            since_cursor=None  # Fetch latest items
+        )
+        
+        created_count = 0
+        papers_to_process = []  # Track paper sources to process after commit
+        for item in items:
+            # Check if already exists (unique constraint is on user_id + external_id)
+            existing_stmt = select(SourceMaterial).where(
+                SourceMaterial.user_id == current_user.id,
+                SourceMaterial.external_id == item.external_id
+            )
+            existing_result = await db.execute(existing_stmt)
+            if existing_result.scalar_one_or_none():
+                logger.info(f"Skipping existing material: {item.external_id}")
+                continue
+            
+            # Create source material
+            material = SourceMaterial(
+                user_id=current_user.id,
+                source_id=source_id,
+                external_id=item.external_id,
+                external_url=item.url,
+                title=item.title,
+                rich_data=item.metadata or {},
+            )
+            db.add(material)
+            created_count += 1
+            
+            # For HF papers, create an individual ARXIV_PAPER source and trigger processing
+            if source.type == "HF_DAILY_PAPERS" and item.metadata and item.metadata.get("arxiv_id"):
+                arxiv_id = item.metadata["arxiv_id"]
+                arxiv_url = f"https://arxiv.org/abs/{arxiv_id}"
+                
+                # Check if paper source already exists
+                existing_paper_stmt = select(Source).where(
+                    Source.user_id == current_user.id,
+                    Source.type == "ARXIV_PAPER",
+                    Source.connection_config["url"].astext == arxiv_url
+                )
+                existing_paper_result = await db.execute(existing_paper_stmt)
+                existing_paper = existing_paper_result.scalar_one_or_none()
+                
+                if not existing_paper:
+                    # Create new paper source
+                    paper_source = Source(
+                        id=uuid.uuid4(),
+                        user_id=current_user.id,
+                        name=item.title,
+                        type="ARXIV_PAPER",
+                        category="SNAPSHOT",
+                        connection_config={"url": arxiv_url},
+                        ingestion_rules={},
+                        status="PENDING",
+                    )
+                    db.add(paper_source)
+                    await db.flush()  # Get the ID without committing
+                    
+                    # Queue for processing after commit
+                    papers_to_process.append(paper_source.id)
+                    logger.info(f"Created paper source {paper_source.id} for {arxiv_url}")
+        
+        # Update source sync time
+        source.last_synced_at = datetime.utcnow()
+        await db.commit()
+        
+        # Trigger paper processing for each new paper source
+        for paper_id in papers_to_process:
+            logger.info(f"Triggering lens processing for paper {paper_id}")
+            asyncio.create_task(process_paper_background(paper_id))
+        
+        return {
+            "status": "sync_completed", 
+            "items_fetched": len(items),
+            "items_created": created_count,
+            "papers_queued": len(papers_to_process)
+        }
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"Sync failed: {e}\n{traceback.format_exc()}")
+        return {"status": "sync_failed", "error": str(e)}
 
 
 from fastapi import UploadFile, File

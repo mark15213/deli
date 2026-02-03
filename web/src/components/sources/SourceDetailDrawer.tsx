@@ -16,7 +16,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { Source } from "@/types/source"
-import { deleteSource } from "@/lib/api/sources"
+import { deleteSource, syncSource, updateSource } from "@/lib/api/sources"
 import { fetchClient } from "@/lib/api/client"
 import React from "react"
 import { LensPipelineCard, LensStatus } from "./LensPipelineCard"
@@ -45,6 +45,9 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
     const [logs, setLogs] = React.useState<SourceLog[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [deleting, setDeleting] = React.useState(false);
+    const [syncing, setSyncing] = React.useState(false);
+    const [editingConfig, setEditingConfig] = React.useState(false);
+    const [configValues, setConfigValues] = React.useState<Record<string, any>>({});
 
     // Filtered logs for lens status tracking
     // We assume the API returns logs, we'll sort them if needed but mostly we just need to find the latest for each lens
@@ -134,6 +137,47 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
         }
     };
 
+    const handleSync = async () => {
+        if (!source) return;
+        setSyncing(true);
+        try {
+            const result = await syncSource(source.id);
+            if (result.status === "sync_completed") {
+                alert(`Synced! Fetched ${result.items_fetched} items, created ${result.items_created} new.`);
+                // Refresh source data
+                const sourceRes = await fetchClient(`/sources/${source.id}`);
+                if (sourceRes.ok) {
+                    setSource(await sourceRes.json());
+                }
+            } else if (result.status === "sync_failed") {
+                alert(`Sync failed: ${result.error}`);
+            }
+        } catch (e) {
+            console.error("Failed to sync source", e);
+            alert("Failed to sync source");
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const handleSaveConfig = async () => {
+        if (!source) return;
+        try {
+            const updated = await updateSource(source.id, {
+                subscription_config: {
+                    ...(source.subscription_config || {}),
+                    ...configValues
+                }
+            });
+            setSource(updated);
+            setEditingConfig(false);
+            alert("Configuration saved!");
+        } catch (e) {
+            console.error("Failed to save config", e);
+            alert("Failed to save configuration");
+        }
+    };
+
     const getLensStatusInfo = (lensKey: string) => {
         // Find the most recent log for this lens
         // Logs are usually returned chronologically or reverse. Let's find all and sort by created_at desc to be safe
@@ -161,6 +205,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
 
     const paperData = source?.source_materials?.[0]?.rich_data;
     const isArxiv = source?.type === 'ARXIV_PAPER';
+    const isSubscription = ['HF_DAILY_PAPERS', 'RSS_FEED', 'AUTHOR_BLOG'].includes(source?.type || '');
 
     // Defined Default Lenses
     const defaultLenses = [
@@ -300,6 +345,129 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                 </div>
                             </section>
                         </>
+                    ) : isSubscription ? (
+                        // Subscription Source View
+                        <section className="space-y-6">
+                            {/* Subscription Status + Sync Button */}
+                            <div className="p-4 bg-gradient-to-r from-primary/10 to-background rounded-lg border">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="font-semibold flex items-center gap-2">
+                                        🔔 Subscription Active
+                                    </h3>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleSync}
+                                        disabled={syncing}
+                                        className="gap-2"
+                                    >
+                                        {syncing ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <RefreshCw className="h-4 w-4" />
+                                        )}
+                                        {syncing ? "Syncing..." : "Sync Now"}
+                                    </Button>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    {source?.type === 'HF_DAILY_PAPERS'
+                                        ? 'Automatically fetches trending AI papers from HuggingFace Daily Papers.'
+                                        : 'Monitors and fetches new content automatically.'}
+                                </p>
+                                {source?.last_synced_at && (
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        Last synced: {new Date(source.last_synced_at).toLocaleString()}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Configuration */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Configuration</h4>
+                                    {!editingConfig ? (
+                                        <Button variant="ghost" size="sm" onClick={() => {
+                                            setConfigValues(source?.subscription_config || {});
+                                            setEditingConfig(true);
+                                        }}>
+                                            Edit
+                                        </Button>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <Button variant="ghost" size="sm" onClick={() => setEditingConfig(false)}>
+                                                Cancel
+                                            </Button>
+                                            <Button size="sm" onClick={handleSaveConfig}>
+                                                <Save className="h-3 w-3 mr-1" />
+                                                Save
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-4 border rounded-lg space-y-3">
+                                    {source?.type === 'HF_DAILY_PAPERS' && (
+                                        <>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span>Max Papers per Sync</span>
+                                                {editingConfig ? (
+                                                    <input
+                                                        type="number"
+                                                        className="w-20 px-2 py-1 border rounded text-right"
+                                                        value={configValues.max_papers_per_sync ?? (source?.subscription_config as any)?.max_papers_per_sync ?? 10}
+                                                        onChange={(e) => setConfigValues({ ...configValues, max_papers_per_sync: parseInt(e.target.value) || 10 })}
+                                                    />
+                                                ) : (
+                                                    <span className="font-medium">{(source?.subscription_config as any)?.max_papers_per_sync || 10}</span>
+                                                )}
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span>Min Upvotes Filter</span>
+                                                {editingConfig ? (
+                                                    <input
+                                                        type="number"
+                                                        className="w-20 px-2 py-1 border rounded text-right"
+                                                        value={configValues.min_upvotes ?? (source?.subscription_config as any)?.min_upvotes ?? 0}
+                                                        onChange={(e) => setConfigValues({ ...configValues, min_upvotes: parseInt(e.target.value) || 0 })}
+                                                    />
+                                                ) : (
+                                                    <span className="font-medium">{(source?.subscription_config as any)?.min_upvotes || 0}</span>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                    <div className="flex justify-between text-sm">
+                                        <span>Status</span>
+                                        <span className="font-medium text-green-500">{source?.status}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Recent Items */}
+                            <div className="space-y-3">
+                                <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Recent Items ({source?.source_materials?.length || 0})</h4>
+                                {source?.source_materials && source.source_materials.length > 0 ? (
+                                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                        {source.source_materials.slice(0, 10).map((material: any) => (
+                                            <a
+                                                key={material.id}
+                                                href={material.external_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                                            >
+                                                <p className="font-medium text-sm line-clamp-2">{material.title}</p>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    {new Date(material.created_at).toLocaleDateString()}
+                                                </p>
+                                            </a>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground p-4 border border-dashed rounded-lg text-center">
+                                        No items fetched yet. Click "Sync Now" to fetch papers.
+                                    </div>
+                                )}
+                            </div>
+                        </section>
                     ) : (
                         // Non-Arxiv Source (Config Only for now)
                         <Tabs defaultValue="config" className="h-full">

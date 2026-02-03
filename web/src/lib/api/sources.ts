@@ -83,3 +83,25 @@ export async function deleteSource(sourceId: string): Promise<void> {
         throw new Error(error.detail || "Failed to delete source");
     }
 }
+
+export async function syncSource(sourceId: string): Promise<{ status: string; items_fetched?: number; items_created?: number; error?: string }> {
+    const res = await fetchClient(`/sources/${sourceId}/sync`, {
+        method: "POST",
+    });
+
+    return res.json();
+}
+
+export async function updateSource(sourceId: string, data: Partial<Source>): Promise<Source> {
+    const res = await fetchClient(`/sources/${sourceId}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: "Update failed" }));
+        throw new Error(error.detail || "Failed to update source");
+    }
+
+    return res.json();
+}
