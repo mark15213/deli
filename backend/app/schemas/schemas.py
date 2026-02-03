@@ -35,6 +35,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    invite_code: str
 
 
 class UserLogin(UserBase):
