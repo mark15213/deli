@@ -1,6 +1,4 @@
-// Study API client
-
-const API_BASE_URL = "/api";
+import { fetchClient } from "./client";
 
 export interface StudyCard {
     id: string;
@@ -43,11 +41,11 @@ export interface SkipBatchResponse {
 export type Rating = 1 | 2 | 3 | 4; // AGAIN, HARD, GOOD, EASY
 
 export async function getStudyQueue(limit = 20, deckId?: string): Promise<StudyCard[]> {
-    let url = `${API_BASE_URL}/study/queue?limit=${limit}`;
+    let url = `/study/queue?limit=${limit}`;
     if (deckId) {
         url += `&deck_id=${deckId}`;
     }
-    const res = await fetch(url);
+    const res = await fetchClient(url);
 
     if (!res.ok) {
         throw new Error("Failed to fetch study queue");
@@ -57,9 +55,8 @@ export async function getStudyQueue(limit = 20, deckId?: string): Promise<StudyC
 }
 
 export async function submitReview(cardId: string, rating: Rating): Promise<ReviewResponse> {
-    const res = await fetch(`${API_BASE_URL}/study/${cardId}/review`, {
+    const res = await fetchClient(`/study/${cardId}/review`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating }),
     });
 
@@ -71,7 +68,7 @@ export async function submitReview(cardId: string, rating: Rating): Promise<Revi
 }
 
 export async function getStudyStats(): Promise<StudyStats> {
-    const res = await fetch(`${API_BASE_URL}/study/stats`);
+    const res = await fetchClient(`/study/stats`);
 
     if (!res.ok) {
         throw new Error("Failed to fetch study stats");
@@ -81,7 +78,7 @@ export async function getStudyStats(): Promise<StudyStats> {
 }
 
 export async function skipBatch(batchId: string): Promise<SkipBatchResponse> {
-    const res = await fetch(`${API_BASE_URL}/study/skip-batch/${batchId}`, {
+    const res = await fetchClient(`/study/skip-batch/${batchId}`, {
         method: "POST",
     });
 

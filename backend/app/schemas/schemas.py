@@ -34,15 +34,34 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    pass
+    password: str
+
+
+class UserLogin(UserBase):
+    password: str
 
 
 class UserResponse(UserBase):
     id: UUID
+    username: str | None = None
+    avatar_url: str | None = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+# --- Auth Schemas ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    refresh_token: str | None = None
+    user_id: str | None = None
+    email: str | None = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 # --- Card/Quiz Schemas ---

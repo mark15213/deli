@@ -1,7 +1,7 @@
-const API_BASE_URL = "/api";
+import { fetchClient } from "./client";
 
 export async function deleteCard(cardId: string): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/cards/${cardId}`, {
+    const res = await fetchClient(`/cards/${cardId}`, {
         method: "DELETE",
     });
 

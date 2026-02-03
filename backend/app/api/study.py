@@ -197,13 +197,16 @@ async def get_study_queue(
     all_cards = list({c.id: c for c in raw_cards}.values())
     
     # Sort cards to ensure reading notes (batches) appear in order and first
+    # Also group cards by source_material_id to keep cards from the same paper together
     # 1. Primary sort: Reading notes first (0 vs 1)
-    # 2. Secondary sort: Batch ID grouping
-    # 3. Tertiary sort: Batch Index
+    # 2. Secondary sort: Source material ID (group same source together)
+    # 3. Tertiary sort: Batch ID for reading notes
+    # 4. Quaternary sort: Batch Index
     all_cards = sorted(
         all_cards, 
         key=lambda c: (
             0 if c.type == "reading_note" else 1,
+            str(c.source_material_id) if c.source_material_id else '',
             str(c.batch_id) if c.batch_id else '', 
             c.batch_index if c.batch_index is not None else 0
         )

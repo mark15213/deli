@@ -9,7 +9,7 @@ import { ProgressBar } from "@/components/shared/ProgressBar"
 import { ArrowLeft, Play, Star, MoreHorizontal, Settings, Trash2, Loader2, FileText, Lightbulb } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
-import { getDeck, subscribeToDeck, unsubscribeFromDeck, type DeckDetail, type CardInDeck } from "@/lib/api/decks"
+import { getDeck, deleteDeck, subscribeToDeck, unsubscribeFromDeck, type DeckDetail, type CardInDeck } from "@/lib/api/decks"
 import { removeCardFromDeck } from "@/lib/api/inbox"
 
 // Helper to map API card to UI card
@@ -177,7 +177,22 @@ export default function DeckDetailPage() {
                             >
                                 <Settings className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="text-destructive">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:bg-destructive/10"
+                                onClick={async () => {
+                                    if (confirm(`Delete "${deck.title}"? This cannot be undone.`)) {
+                                        try {
+                                            await deleteDeck(deckId)
+                                            router.push("/decks")
+                                        } catch (err) {
+                                            console.error("Failed to delete deck:", err)
+                                            alert("Failed to delete deck")
+                                        }
+                                    }
+                                }}
+                            >
                                 <Trash2 className="h-4 w-4" />
                             </Button>
                         </div>

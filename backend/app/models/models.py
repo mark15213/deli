@@ -37,6 +37,9 @@ class User(Base):
     username: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
+    # Auth
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
     # FSRS global settings and daily limits
     settings: Mapped[dict] = mapped_column(JSONB, default=dict)
     
@@ -225,27 +228,38 @@ class ReviewLog(Base):
 
 class Source(Base):
     """
-    Core Source entity separating Connection (static) and Logic (dynamic).
-    Replaces legacy SyncConfig.
+    Core Source entity for content ingestion.
+    
+    Category Types:
+    - SNAPSHOT: One-time parse (papers, articles, tweets, repos)
+    - SUBSCRIPTION: Periodic sync (RSS, HF Daily, author blogs)
     """
     __tablename__ = "sources"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    parent_source_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), nullable=True, index=True)
     
     name: Mapped[str] = mapped_column(String(255))
-    type: Mapped[str] = mapped_column(String(50)) # e.g. 'NOTION_KB', 'X_SOCIAL'
+    type: Mapped[str] = mapped_column(String(50))  # e.g. 'ARXIV_PAPER', 'RSS_FEED'
+    category: Mapped[str] = mapped_column(String(20), default="SNAPSHOT")  # SNAPSHOT | SUBSCRIPTION
     
-    # Connection Config (Encrypted/Sensitive)
+    # Connection Config (Static)
     # Stores: url, auth_token, api_keys
     connection_config: Mapped[dict] = mapped_column(JSONB, default=dict)
     
     # Ingestion Rules (Dynamic/User Tunable)
-    # Stores: filters, prompts, frequency
+    # Stores: lens configs, prompts
     ingestion_rules: Mapped[dict] = mapped_column(JSONB, default=dict)
     
-    status: Mapped[str] = mapped_column(String(20), default="ACTIVE") # ACTIVE, PAUSED, ERROR
+    # Subscription-specific config (only for SUBSCRIPTION category)
+    # Stores: sync_frequency, filters, etc. - schema varies by type
+    subscription_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    
+    # Status: PENDING, PROCESSING, COMPLETED (snapshot), ACTIVE, PAUSED, ERROR
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # For subscriptions
     error_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -255,6 +269,8 @@ class Source(Base):
     user: Mapped["User"] = relationship(back_populates="sources")
     source_materials: Mapped[List["SourceMaterial"]] = relationship(back_populates="source")
     logs: Mapped[List["SourceLog"]] = relationship(back_populates="source", cascade="all, delete-orphan")
+    parent: Mapped[Optional["Source"]] = relationship("Source", remote_side=[id], back_populates="children", foreign_keys=[parent_source_id])
+    children: Mapped[List["Source"]] = relationship("Source", back_populates="parent", foreign_keys="[Source.parent_source_id]")
 
 
 class SourceLog(Base):

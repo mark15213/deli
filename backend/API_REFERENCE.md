@@ -11,7 +11,16 @@ Base URL: `/api/v1`
 ### Notion Callback
 - **GET** `/auth/notion/callback`
 - **Query Params**: `code` (string)
-- Handles the OAuth callback, creates/updates user, and returns JWT access token.
+- **Query Params**: `code` (string)
+- **Response**: `Token` object (access_token, refresh_token, token_type, user_id, email).
+
+### Refresh Token
+- **POST** `/auth/refresh`
+- **Body**:
+  ```json
+  { "refresh_token": "..." }
+  ```
+- **Response**: `Token` object with new access token.
 
 ## Sources (`/sources`) [NEW]
 Manage external data sources (X, Notion, GitHub, etc).

@@ -5,13 +5,29 @@ import { Button } from "@/components/ui/button"
 import { Plus, Search, SlidersHorizontal, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useState, useEffect } from "react"
-import { getDecks, subscribeToDeck, unsubscribeFromDeck, type Deck } from "@/lib/api/decks"
+import { getDecks, createDeck, deleteDeck, subscribeToDeck, unsubscribeFromDeck, type Deck } from "@/lib/api/decks"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 export default function DecksPage() {
     const [decks, setDecks] = useState<Deck[]>([])
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
     const [showSubscribedOnly, setShowSubscribedOnly] = useState(false)
+
+    // Create deck dialog state
+    const [createDialogOpen, setCreateDialogOpen] = useState(false)
+    const [newDeckTitle, setNewDeckTitle] = useState("")
+    const [newDeckDescription, setNewDeckDescription] = useState("")
+    const [creating, setCreating] = useState(false)
 
     useEffect(() => {
         fetchDecks()
@@ -29,6 +45,26 @@ export default function DecksPage() {
         }
     }
 
+    const handleCreateDeck = async () => {
+        if (!newDeckTitle.trim()) return
+
+        try {
+            setCreating(true)
+            const newDeck = await createDeck({
+                title: newDeckTitle.trim(),
+                description: newDeckDescription.trim() || undefined,
+            })
+            setDecks([newDeck, ...decks])
+            setCreateDialogOpen(false)
+            setNewDeckTitle("")
+            setNewDeckDescription("")
+        } catch (error) {
+            console.error("Failed to create deck:", error)
+        } finally {
+            setCreating(false)
+        }
+    }
+
     const handleSubscribeChange = async (deckId: string, subscribed: boolean) => {
         try {
             if (subscribed) {
@@ -42,6 +78,16 @@ export default function DecksPage() {
             ))
         } catch (error) {
             console.error("Failed to update subscription:", error)
+        }
+    }
+
+    const handleDelete = async (deckId: string) => {
+        try {
+            await deleteDeck(deckId)
+            setDecks(decks.filter(d => d.id !== deckId))
+        } catch (error) {
+            console.error("Failed to delete deck:", error)
+            alert("Failed to delete deck")
         }
     }
 
@@ -86,7 +132,7 @@ export default function DecksPage() {
                             {decks.length} decks • {totalCards} cards
                         </p>
                     </div>
-                    <Button className="gap-2">
+                    <Button className="gap-2" onClick={() => setCreateDialogOpen(true)}>
                         <Plus className="h-4 w-4" />
                         New Deck
                     </Button>
@@ -122,6 +168,7 @@ export default function DecksPage() {
                     <DeckList
                         decks={filteredDecks}
                         onSubscribeChange={handleSubscribeChange}
+                        onDelete={handleDelete}
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -132,7 +179,58 @@ export default function DecksPage() {
                     </div>
                 )}
             </div>
+
+            {/* Create Deck Dialog */}
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Create New Deck</DialogTitle>
+                        <DialogDescription>
+                            Create a new deck to organize your flashcards and study materials.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="title">Title</Label>
+                            <Input
+                                id="title"
+                                placeholder="e.g., Machine Learning Fundamentals"
+                                value={newDeckTitle}
+                                onChange={(e) => setNewDeckTitle(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleCreateDeck()}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="description">Description (optional)</Label>
+                            <Textarea
+                                id="description"
+                                placeholder="A brief description of this deck..."
+                                value={newDeckDescription}
+                                onChange={(e) => setNewDeckDescription(e.target.value)}
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleCreateDeck}
+                            disabled={!newDeckTitle.trim() || creating}
+                        >
+                            {creating ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Creating...
+                                </>
+                            ) : (
+                                "Create Deck"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
-

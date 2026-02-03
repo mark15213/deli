@@ -189,7 +189,7 @@ class RunnerService:
                  api_url = f"{self.client.base_url}/chat/completions"
             
             import httpx
-            async with httpx.AsyncClient(timeout=60.0) as http_client:
+            async with httpx.AsyncClient(timeout=180.0) as http_client:
                 resp = await http_client.post(api_url, headers=headers, json=request_payload)
                 if resp.status_code != 200:
                     logger.error(f"OpenAI API Error {resp.status_code}: {resp.text}")
@@ -280,11 +280,13 @@ class RunnerService:
             await self._update_lens_log(source.id, "default_summary", "completed", 
                                        message="Summary generated successfully", duration_ms=duration_ms)
         except Exception as e:
+            import traceback
             duration_ms = int((time.time() - start_time) * 1000)
+            err_msg = str(e) or f"Error: {type(e).__name__}"
+            logger.error(f"Lens summary failed: {err_msg}\n{traceback.format_exc()}")
             await self._update_lens_log(source.id, "default_summary", "failed",
-                                       message=str(e), duration_ms=duration_ms)
-            logger.error(f"Lens summary failed: {e}")
-            summary_artifact = Artifact(lens_key="default_summary", source_id=str(source.id), content={"error": str(e)}, created_at=time.time())
+                                       message=err_msg, duration_ms=duration_ms)
+            summary_artifact = Artifact(lens_key="default_summary", source_id=str(source.id), content={"error": err_msg}, created_at=time.time())
         
         # Create dummy artifact for suggestions so we don't break strict structure if expected
         profiler_artifact = Artifact(
@@ -367,9 +369,12 @@ class RunnerService:
                 await self._update_lens_log(source.id, "study_quiz", "completed",
                                             message="Flashcards generated", duration_ms=duration_ms)
             except Exception as e:
+                import traceback
                 duration_ms = int((time.time() - start_time) * 1000)
+                err_msg = str(e) or f"Error: {type(e).__name__}"
+                logger.error(f"Study quiz generation failed: {err_msg}\n{traceback.format_exc()}")
                 await self._update_lens_log(source.id, "study_quiz", "failed",
-                                           message=str(e), duration_ms=duration_ms)
+                                           message=err_msg, duration_ms=duration_ms)
         
         
         await self.db.commit()
@@ -395,7 +400,10 @@ class RunnerService:
             init_log.event_type = "sync_completed"
             init_log.message = "Source processing finished successfully"
             init_log.duration_ms = int((time.time() - process_start_time) * 1000) # approximate total time
-            await self.db.commit()
+        
+        # Update source status to COMPLETED
+        source.status = "COMPLETED"
+        await self.db.commit()
 
         logger.info(f"Finished processing source {source_id}")
 

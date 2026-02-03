@@ -18,9 +18,10 @@ interface Deck {
 interface DeckListProps {
     decks: Deck[]
     onSubscribeChange?: (deckId: string, subscribed: boolean) => void
+    onDelete?: (deckId: string) => void
 }
 
-export function DeckList({ decks, onSubscribeChange }: DeckListProps) {
+export function DeckList({ decks, onSubscribeChange, onDelete }: DeckListProps) {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {decks.map((deck) => (
@@ -28,6 +29,7 @@ export function DeckList({ decks, onSubscribeChange }: DeckListProps) {
                     key={deck.id}
                     {...deck}
                     onSubscribeChange={(subscribed) => onSubscribeChange?.(deck.id, subscribed)}
+                    onDelete={() => onDelete?.(deck.id)}
                 />
             ))}
         </div>
