@@ -51,3 +51,4 @@ DerivedData/
 # Secrets
 *.pem
 *.key
+mem.md
