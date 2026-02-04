@@ -56,12 +56,25 @@ export interface TweetConnectionConfig {
     tweet_id?: string;
 }
 
+export interface XConnectionConfig {
+    target_username: string;
+    api_token: string;
+}
+
+export interface XIngestionRules {
+    scope: 'USER_FEED' | 'BOOKMARKS' | 'SEARCH_KEYWORD';
+    include_replies: boolean;
+    min_likes_threshold: number;
+    grouping_strategy: 'THREAD' | 'SINGLE';
+}
+
 export type ConnectionConfig =
     | ArxivConnectionConfig
     | WebArticleConnectionConfig
     | GithubConnectionConfig
     | RssConnectionConfig
     | TweetConnectionConfig
+    | XConnectionConfig
     | Record<string, any>;
 
 // --- Subscription Configs ---
