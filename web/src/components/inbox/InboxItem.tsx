@@ -31,6 +31,7 @@ interface InboxItemProps {
     onToggleDeck?: (sourceId: string, deckId: string) => Promise<void>
     onCreateDeck?: () => void
     currentDeckIds?: string[]
+    onDelete?: (id: string) => Promise<void>
 }
 
 function SourceIcon({ type }: { type: InboxItemProps["sourceType"] }) {
@@ -55,10 +56,12 @@ export function InboxItem({
     decks = [],
     onToggleDeck,
     onCreateDeck,
-    currentDeckIds = []
+    currentDeckIds = [],
+    onDelete
 }: InboxItemProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [isDeleting, setIsDeleting] = useState(false)
 
     const handleDeckSelect = async (deckId: string) => {
         if (!onToggleDeck) {
@@ -81,6 +84,26 @@ export function InboxItem({
             onCreateDeck()
         } else {
             console.log("Create deck not implemented")
+        }
+    }
+
+    const handleDelete = async () => {
+        if (!onDelete) {
+            console.log("Delete not implemented")
+            return
+        }
+
+        if (!confirm(`Delete all cards from "${title}"? This cannot be undone.`)) {
+            return
+        }
+
+        try {
+            setIsDeleting(true)
+            await onDelete(id)
+        } catch (error) {
+            console.error("Failed to delete:", error)
+        } finally {
+            setIsDeleting(false)
         }
     }
 
@@ -150,7 +173,16 @@ export function InboxItem({
                         <Eye className="h-3 w-3" />
                         Preview
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive">
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete()
+                        }}
+                        disabled={isDeleting}
+                    >
                         <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                 </div>

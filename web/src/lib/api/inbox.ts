@@ -119,3 +119,24 @@ export async function bulkReject(cardIds: string[]): Promise<void> {
         throw new Error("Failed to bulk reject");
     }
 }
+
+export async function deleteCard(cardId: string): Promise<void> {
+    const res = await fetchClient(`/inbox/${cardId}`, {
+        method: "DELETE",
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to delete card");
+    }
+}
+
+export async function bulkDelete(cardIds: string[]): Promise<void> {
+    const res = await fetchClient(`/inbox/bulk/delete`, {
+        method: "POST",
+        body: JSON.stringify({ card_ids: cardIds }),
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to bulk delete");
+    }
+}
