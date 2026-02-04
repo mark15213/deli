@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Rss, Inbox, Layers, Brain, ChevronLeft, ChevronRight, LogOut } from "lucide-react"
+import { Home, Rss, Inbox, Layers, Brain, ChevronLeft, ChevronRight, LogOut, Beaker } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
