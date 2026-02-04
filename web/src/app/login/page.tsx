@@ -27,7 +27,10 @@ export default function LoginPage() {
         setIsLoading(true);
 
         try {
-            const res = await fetch(getApiUrl("/auth/login"), {
+            const apiUrl = getApiUrl("/auth/login");
+            console.log("[Login] Calling API:", apiUrl);
+
+            const res = await fetch(apiUrl, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -35,16 +38,31 @@ export default function LoginPage() {
                 body: JSON.stringify({ email, password }),
             });
 
+            console.log("[Login] Response status:", res.status);
+
+            // Check if the response is empty
+            const text = await res.text();
+            console.log("[Login] Response body:", text);
+
+            if (!text) {
+                throw new Error("Server returned empty response. Check API connection.");
+            }
+
+            const data = JSON.parse(text);
+
             if (!res.ok) {
-                const data = await res.json();
                 throw new Error(data.detail || "Login failed");
             }
 
-            const data = await res.json();
             login(data.access_token, data.refresh_token);
 
         } catch (err: any) {
-            setError(err.message);
+            console.error("[Login] Error:", err);
+            if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                setError("Cannot connect to server. Please check your connection.");
+            } else {
+                setError(err.message);
+            }
             setIsLoading(false);
         }
     };
