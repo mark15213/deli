@@ -12,8 +12,7 @@ export interface StudyCard {
     deck_ids: string[];
     deck_titles: string[];
     // Batch info for series notes (paper reading notes)
-    batch_id?: string;
-    batch_index?: number;
+    // Batch info for series notes (paper reading notes)
     batch_id?: string;
     batch_index?: number;
     batch_total?: number;
