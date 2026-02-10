@@ -55,13 +55,24 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
     // Fetch Source Data & Logs logic
     React.useEffect(() => {
         let intervalId: NodeJS.Timeout | null = null;
+        let stopped = false;
+
+        const stopPolling = () => {
+            stopped = true;
+            if (intervalId) { clearInterval(intervalId); intervalId = null; }
+        };
 
         const fetchData = async () => {
-            if (!sourceId) return;
+            if (!sourceId || stopped) return;
 
             try {
                 // Fetch Source
                 const sourceRes = await fetchClient(`/sources/${sourceId}`);
+                if (sourceRes.status === 404) {
+                    // Source was deleted — stop polling immediately
+                    stopPolling();
+                    return;
+                }
                 if (sourceRes.ok) {
                     const sourceData = await sourceRes.json();
                     setSource(sourceData);
@@ -69,15 +80,30 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
 
                 // Fetch Logs for status updates
                 const logsRes = await fetchClient(`/sources/${sourceId}/logs`);
+                if (logsRes.status === 404) {
+                    stopPolling();
+                    return;
+                }
                 if (logsRes.ok) {
                     const logsData = await logsRes.json();
                     setLogs(logsData);
 
-                    // Check if anything is running to determine polling frequency
+                    // Check processing state
                     const hasRunning = logsData.some((l: SourceLog) => l.status === 'running');
-                    const pollInterval = hasRunning ? 3000 : 10000;
+                    const allDone = logsData.length > 0 && logsData.every(
+                        (l: SourceLog) => l.status === 'completed' || l.status === 'failed'
+                    );
 
-                    // Reset interval if changed
+                    if (allDone) {
+                        // Processing finished — no need to keep polling
+                        stopPolling();
+                        return;
+                    }
+
+                    // Poll at 5s when processing, 15s when idle
+                    const pollInterval = hasRunning ? 5000 : 15000;
+
+                    // Reset interval if needed
                     if (intervalId) clearInterval(intervalId);
                     intervalId = setInterval(fetchData, pollInterval);
                 }
@@ -95,7 +121,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
         }
 
         return () => {
-            if (intervalId) clearInterval(intervalId);
+            stopPolling();
         };
     }, [isOpen, sourceId]);
 
