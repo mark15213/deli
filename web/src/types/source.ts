@@ -139,9 +139,12 @@ export interface SourceMaterial {
 
 // --- Source Entity ---
 
+import { User } from './user';
+// ... (Source interface definition)
 export interface Source {
     id: string;
     user_id?: string;
+    user?: User;
     name: string;
     type: SourceType;
     category: SourceCategory;

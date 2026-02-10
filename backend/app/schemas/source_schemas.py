@@ -139,6 +139,8 @@ class SourceMaterialResponse(BaseModel):
         from_attributes = True
 
 
+from app.schemas.schemas import UserResponse
+
 class SourceResponse(BaseModel):
     """Response schema for sources."""
     id: UUID
@@ -155,7 +157,8 @@ class SourceResponse(BaseModel):
     children_count: int = 0
     source_materials: List[SourceMaterialResponse] = []
     created_at: Optional[datetime] = None
-    
+    user: Optional[UserResponse] = None
+
     class Config:
         from_attributes = True
 

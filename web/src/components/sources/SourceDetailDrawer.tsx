@@ -252,6 +252,26 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                 </p>
                             )}
                         </div>
+                        {source?.user && (
+                            <div className="flex flex-col items-end text-sm text-muted-foreground">
+                                <span className="text-xs uppercase tracking-wider opacity-70 mb-1">Created by</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-foreground">{source.user.username || source.user.email}</span>
+                                    {source.user.avatar_url && (
+                                        <img
+                                            src={source.user.avatar_url}
+                                            alt={source.user.username || "User"}
+                                            className="w-8 h-8 rounded-full border bg-muted"
+                                        />
+                                    )}
+                                    {!source.user.avatar_url && (
+                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold border">
+                                            {(source.user.username || source.user.email || "?")[0].toUpperCase()}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
