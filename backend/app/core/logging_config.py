@@ -45,8 +45,14 @@ def setup_logging():
     root_logger.addHandler(file_handler)
     
     # Set levels for specific libraries
+    # Set levels for specific libraries to reduce noise
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING) # Too noisy otherwise
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("multipart").setLevel(logging.WARNING) # Suppress binary/form-data logs
+    logging.getLogger("pdfminer").setLevel(logging.WARNING)
 
     return root_logger
 

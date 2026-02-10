@@ -5,10 +5,12 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 pydantic[email]>=2.5.0
 pydantic-settings>=2.1.0
+python-multipart>=0.0.6
 
 # Database
 sqlalchemy[asyncio]>=2.0.25
 asyncpg>=0.29.0
+psycopg2-binary>=2.9.9
 alembic>=1.13.0
 
 # Redis & Task Queue
@@ -33,8 +35,12 @@ fsrs>=3.0.0
 
 # AI & LLM
 langchain>=0.1.0
+langchain-text-splitters>=0.0.1
+langchain-openai>=0.0.5
 langchain-openai>=0.0.5
 openai>=1.10.0
+google-genai>=0.3.0
+instructor>=1.0.0
 instructor>=1.0.0
 
 # Notion SDK
@@ -42,6 +48,10 @@ notion-client>=2.2.0
 
 # Vector Database Client
 qdrant-client>=1.7.0
+
+# PDF Processing
+pymupdf>=1.24.0
+Pillow>=10.0.0
 
 # Development
 pytest>=7.4.0

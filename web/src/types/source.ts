@@ -56,12 +56,25 @@ export interface TweetConnectionConfig {
     tweet_id?: string;
 }
 
+export interface XConnectionConfig {
+    target_username: string;
+    api_token: string;
+}
+
+export interface XIngestionRules {
+    scope: 'USER_FEED' | 'BOOKMARKS' | 'SEARCH_KEYWORD';
+    include_replies: boolean;
+    min_likes_threshold: number;
+    grouping_strategy: 'THREAD' | 'SINGLE';
+}
+
 export type ConnectionConfig =
     | ArxivConnectionConfig
     | WebArticleConnectionConfig
     | GithubConnectionConfig
     | RssConnectionConfig
     | TweetConnectionConfig
+    | XConnectionConfig
     | Record<string, any>;
 
 // --- Subscription Configs ---
@@ -126,9 +139,12 @@ export interface SourceMaterial {
 
 // --- Source Entity ---
 
+import { User } from './user';
+// ... (Source interface definition)
 export interface Source {
     id: string;
     user_id?: string;
+    user?: User;
     name: string;
     type: SourceType;
     category: SourceCategory;

@@ -1,0 +1,8 @@
+system_prompt: |
+  You are an expert research assistant. Your task is to provide a concise 'TL;DR' summary of the provided research paper text. Focus on the core problem, the proposed solution/method, and the key results. Format the output as Markdown.
+user_prompt_template: |
+  Here is the text of the paper:
+
+  {text}
+
+  Please provide the summary.

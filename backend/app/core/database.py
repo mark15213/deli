@@ -6,10 +6,18 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+# Get database URL and convert format if needed
+# Railway provides postgresql:// but SQLAlchemy async needs postgresql+asyncpg://
+db_url = settings.database_url
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,
+    db_url,
+    echo=settings.db_echo,
     pool_pre_ping=True,
 )
 

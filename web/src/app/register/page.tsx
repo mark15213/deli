@@ -38,7 +38,10 @@ export default function RegisterPage() {
         }
 
         try {
-            const res = await fetch(getApiUrl("/auth/register"), {
+            const apiUrl = getApiUrl("/auth/register");
+            console.log("[Register] Calling API:", apiUrl);
+
+            const res = await fetch(apiUrl, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -46,9 +49,19 @@ export default function RegisterPage() {
                 body: JSON.stringify({ email, password, invite_code: inviteCode }),
             });
 
+            console.log("[Register] Response status:", res.status);
+
+            // Check if the response is empty
+            const text = await res.text();
+            console.log("[Register] Response body:", text);
+
             if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.detail || "Registration failed");
+                if (text) {
+                    const data = JSON.parse(text);
+                    throw new Error(data.detail || "Registration failed");
+                } else {
+                    throw new Error("Server returned empty response. Check API connection.");
+                }
             }
 
             // Registration successful. 
@@ -56,7 +69,12 @@ export default function RegisterPage() {
             // For now, let's redirect to login.
             router.push("/login?registered=true");
         } catch (err: any) {
-            setError(err.message);
+            console.error("[Register] Error:", err);
+            if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                setError("Cannot connect to server. Please check your connection.");
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLoading(false);
         }

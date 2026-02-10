@@ -218,6 +218,37 @@ async def bulk_reject(
     }
 
 
+@router.post("/bulk/delete")
+async def bulk_delete(
+    request: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete multiple cards at once."""
+    stmt = (
+        select(Card)
+        .where(
+            Card.id.in_(request.card_ids),
+            Card.owner_id == current_user.id,
+        )
+    )
+    result = await db.execute(stmt)
+    cards = result.scalars().all()
+    
+    deleted_ids = []
+    for card in cards:
+        deleted_ids.append(str(card.id))
+        await db.delete(card)
+    
+    await db.commit()
+    
+    return {
+        "status": "deleted",
+        "count": len(deleted_ids),
+        "card_ids": deleted_ids,
+    }
+
+
 # --- Single card actions ---
 
 @router.post("/{card_id}/approve")
@@ -258,6 +289,26 @@ async def reject_item(
     await db.commit()
     
     return {"status": "rejected", "card_id": str(card_id)}
+
+
+@router.delete("/{card_id}")
+async def delete_card(
+    card_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete a card."""
+    stmt = select(Card).where(Card.id == card_id, Card.owner_id == current_user.id)
+    result = await db.execute(stmt)
+    card = result.scalar_one_or_none()
+    
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    
+    await db.delete(card)
+    await db.commit()
+    
+    return {"status": "deleted", "card_id": str(card_id)}
 
 
 @router.post("/{card_id}/decks/{deck_id}")

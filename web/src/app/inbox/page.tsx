@@ -4,7 +4,7 @@ import { InboxItem } from "@/components/inbox/InboxItem"
 import { SourceCompareDrawer } from "@/components/inbox/SourceCompareDrawer"
 import { ImportCardsModal } from "@/components/inbox/ImportCardsModal"
 import { useState, useEffect, useCallback } from "react"
-import { getPendingBySource, addCardToDeck, removeCardFromDeck, type InboxSourceGroup } from "@/lib/api/inbox"
+import { getPendingBySource, addCardToDeck, removeCardFromDeck, bulkDelete, type InboxSourceGroup } from "@/lib/api/inbox"
 import { getDecks, createDeck, type Deck } from "@/lib/api/decks"
 import { Loader2, X, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -172,6 +172,18 @@ export default function InboxPage() {
         setDecks(prev => [...prev, newDeck])
     }
 
+    const handleDeleteSource = async (sourceId: string) => {
+        // Find the source group and delete all its cards
+        const source = items.find(i => (i.source_id || i.source_title) === sourceId)
+        if (!source) return
+
+        const cardIds = source.cards.map(c => c.id)
+        await bulkDelete(cardIds)
+
+        // Refresh the list
+        fetchInboxItems()
+    }
+
     // Map API source type to UI source type
     const getSourceType = (sourceUrl?: string): "twitter" | "article" | "podcast" | "note" => {
         if (!sourceUrl) return "article"
@@ -269,6 +281,7 @@ export default function InboxPage() {
                                 onToggleDeck={handleToggleDeck}
                                 onCreateDeck={() => setShowCreateDeckModal(true)}
                                 currentDeckIds={getCommonDeckIds(item)}
+                                onDelete={handleDeleteSource}
                             />
                         ))
                     )}

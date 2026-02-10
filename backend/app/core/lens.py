@@ -11,6 +11,7 @@ class SourceData(BaseModel):
     base64_data: Optional[str] = None
     mime_type: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    images: Optional[List[bytes]] = None # For multimodal lenses
 
 class Lens(BaseModel):
     """

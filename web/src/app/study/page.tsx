@@ -26,6 +26,7 @@ function mapApiCardToStudyCard(card: ApiStudyCard) {
             batch_id: card.batch_id,
             batch_index: card.batch_index,
             batch_total: card.batch_total,
+            images: card.images,
         }
     } else if (card.type === "flashcard" || card.type === "qa") {
         return {

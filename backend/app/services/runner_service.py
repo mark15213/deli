@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.lens import SourceData, Lens, Artifact
+from app.core.config import get_settings
 from app.models.models import Source, SourceMaterial, Card, CardStatus, SourceLog
-from app.lenses.registry import get_default_summary_lens, get_profiler_lens, get_reading_notes_lens, get_study_quiz_lens
+from app.lenses.registry import get_default_summary_lens, get_profiler_lens, get_reading_notes_lens, get_study_quiz_lens, get_figure_association_lens
+from app.services.pdf_extractor import extract_figures_from_pdf, save_figures_to_local, get_figure_info_for_prompt
 import uuid as uuid_module
 
 logger = logging.getLogger(__name__)
@@ -21,18 +23,19 @@ logger = logging.getLogger(__name__)
 class RunnerService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        # Initialize OpenAI client with custom base_url
-        base_url = os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:8045/v1")
-        # Do not load API key from source code
-        api_key = os.environ.get("OPENAI_API_KEY")
-        
+        # Initialize Google GenAI Client
+        settings = get_settings()
+        # Priority: GEMINI_API_KEY -> OPENAI_API_KEY (fallback)
+        api_key = settings.gemini_api_key
         if not api_key:
-            logger.warning("OPENAI_API_KEY environment variable is not set.")
-            
-        self.client = AsyncOpenAI(
-            base_url=base_url,
-            api_key=api_key
-        )
+            api_key = settings.openai_api_key
+            if api_key:
+                 logger.info("Using OPENAI_API_KEY as fallback for Gemini Client.")
+            else:
+                 logger.warning("No API key found (GEMINI_API_KEY or OPENAI_API_KEY).")
+
+        from google import genai
+        self.client = genai.Client(api_key=api_key)
 
     async def _log_event(
         self,
@@ -112,111 +115,152 @@ class RunnerService:
         
         return log
 
+    def _parse_json_robust(self, content: str) -> Any:
+        """
+        Attempt to parse JSON from a string, handling markdown fences and common LLM quirks.
+        """
+        # 1. Strip markdown fences
+        content = content.replace("```json", "").replace("```", "").strip()
+        
+        # 2. Try identifying the JSON block boundaries (first { or [ and last } or ])
+        # This helps if there is conversational text around the JSON
+        start_matrix = {
+            "{": content.find("{"),
+            "[": content.find("[")
+        }
+        # Filter -1
+        valid_starts = [idx for idx in start_matrix.values() if idx != -1]
+        
+        if valid_starts:
+            start_idx = min(valid_starts)
+            # Determine end char based on start char
+            start_char = content[start_idx]
+            end_char = "}" if start_char == "{" else "]"
+            end_idx = content.rfind(end_char)
+            
+            if end_idx != -1 and end_idx > start_idx:
+                 content = content[start_idx : end_idx + 1]
+
+        # 3. Handle common escape issues (e.g. LaTeX backslashes)
+        # Repair invalid escapes: matching backslash that is NOT followed by a valid escape char
+        # Valid JSON escapes: ", \, /, b, f, n, r, t, uXXXX
+        content = re.sub(r'(?<!\\)\\(?![\\"/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', content)
+
+        return json.loads(content)
+
     async def run_lens(self, source_data: SourceData, lens: Lens) -> Artifact:
         """
-        Execute a single Lens against a Source.
+        Execute a single Lens against a Source using google-genai SDK.
         """
+        from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+        from google.genai import types
+        from google.genai.errors import ServerError, ClientError
+
+        # Define retry strategy
+        @retry(
+            wait=wait_exponential(multiplier=1, min=2, max=60),
+            stop=stop_after_attempt(5),
+            retry=retry_if_exception_type(ServerError), # Retry on 5xx
+            before_sleep=before_sleep_log(logger, logging.WARNING)
+        )
+        async def _make_api_call(model, contents, config):
+            return await self.client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
+            )
+
         try:
-            # Construct Prompt
-            messages = []
+            # Construct Contents
+            contents = []
             
-            # System Prompt
-            if lens.system_prompt:
-                messages.append({"role": "system", "content": lens.system_prompt})
+            # System Prompt (Gemini supports system_instruction in config, but putting it in contents matches older patterns too. 
+            # However, SDK recommends config.system_instruction. Let's use config if possible, or prepended text.)
+            # For simplicity with the unified contents structure, let's strictly follow SDK 'system_instruction' config if we want, 
+            # OR just prepend it to the user message which is often more robust across models.
+            # Let's use the config.system_instruction approach for cleanliness.
+            system_instruction = lens.system_prompt
             
-            # User Prompt
-            user_content = []
-            
-            # Add text prompt (template filled or generic)
-            # If text is available, format it into the template.
-            # If only base64 is available, we use the template but maybe without {text} if it's just "Summarize this document".
-            # But the template likely contains {text}. We should handle this.
-            # For PDF chat, the text is the PDF itself. The prompt is the instruction.
-            
+            # User Prompt Construction
             prompt_text = lens.user_prompt_template
             if source_data.text:
                  try:
                      prompt_text = prompt_text.format(text=source_data.text)
                  except KeyError:
-                     # If template expects text but we don't have it, or vice versa
                      pass
             else:
-                 # If no text (e.g. PDF only), we might need to strip {text} from template or just use the template as is if it doesn't have {text} variable
-                 # A simple fallback:
                  if "{text}" in prompt_text:
                      prompt_text = prompt_text.replace("{text}", "this document")
 
-            user_content.append({"type": "text", "text": prompt_text})
+            # Content Parts
+            parts = []
+            parts.append(types.Part.from_text(text=prompt_text))
 
             if source_data.base64_data and source_data.mime_type:
-                # Use image_url trick for PDF base64 (common proxy pattern for Gemini)
-                # Ensure no newlines in base64
+                # Add image/pdf part
+                import base64
                 clean_b64 = source_data.base64_data.replace("\n", "").replace("\r", "")
-                
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{source_data.mime_type};base64,{clean_b64}"
-                    }
-                })
+                image_bytes = base64.b64decode(clean_b64)
+                parts.append(types.Part.from_bytes(data=image_bytes, mime_type=source_data.mime_type))
             
-            messages.append({"role": "user", "content": user_content})
+            # Add multimodal images (e.g. for figure association)
+            if source_data.images:
+                logger.info(f"Adding {len(source_data.images)} images to multimodal request")
+                for i, img_bytes in enumerate(source_data.images):
+                    parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+
+            contents.append(types.Content(role="user", parts=parts))
+
+            # Determine Model
+            settings = get_settings()
+            env_model = settings.openai_model or "gemini-3-flash" # config now defaults to gemini
+            model_name = lens.parameters.get("model", env_model)
             
-            model_name = lens.parameters.get("model", "gemini-3-flash")
+            # Config
+            config = types.GenerateContentConfig(
+                temperature=lens.parameters.get("temperature", 0.7),
+                system_instruction=system_instruction,
+                http_options=types.HttpOptions(timeout=180000) # 180 seconds in ms
+            )
             
-            # DEBUG: Log payload
-            payload_str = json.dumps(messages, default=str)
-            logger.info(f"LLM REQUEST [lens={lens.key}]: {payload_str}")
+            # JSON Schema enforcement
+            if lens.output_schema:
+                 # Check if schema is a Pydantic model or dict
+                 if isinstance(lens.output_schema, dict):
+                     # For raw dict schema, we might need to rely on prompt instruction + parser, 
+                     # OR use response_mime_type="application/json"
+                     config.response_mime_type = "application/json"
+                     if "response_schema" in lens.output_schema:
+                          config.response_schema = lens.output_schema["response_schema"]
+                 else:
+                     # If it's a Pydantic class (from instructor pattern before)
+                     # We can pass it if we convert it to schema, but usually lens.output_schema here is likely a dict or None from registry
+                     config.response_mime_type = "application/json"
+
+            # DEBUG: Log
+            logger.info(f"LLM REQUEST [lens={lens.key}] Model={model_name}")
             
-            # Generate
             start_time = time.time()
             
-            # Use raw httpx to bypass OpenAI SDK validation for 'input_file' type
-            api_url = f"{self.client.base_url}chat/completions"
-            headers = {
-                "Authorization": f"Bearer {self.client.api_key}",
-                "Content-Type": "application/json"
-            }
-            request_payload = {
-                "model": model_name,
-                "messages": messages,
-                "stream": False
-            }
-            
-            # Remove /v1//v1 if double appended or ensure clean join
-            # base_url usually ends with /v1/
-            if not str(self.client.base_url).endswith("/"):
-                 api_url = f"{self.client.base_url}/chat/completions"
-            
-            import httpx
-            async with httpx.AsyncClient(timeout=180.0) as http_client:
-                resp = await http_client.post(api_url, headers=headers, json=request_payload)
-                if resp.status_code != 200:
-                    logger.error(f"OpenAI API Error {resp.status_code}: {resp.text}")
-                resp.raise_for_status()
-                response_data = resp.json()
+            # Call API
+            response = await _make_api_call(model=model_name, contents=contents, config=config)
             
             end_time = time.time()
             
-            content = response_data["choices"][0]["message"]["content"]
-            logger.info(f"LLM RESPONSE [lens={lens.key}]: {content}")
+            content = response.text
+            logger.info(f"LLM RESPONSE [lens={lens.key}]: {content[:200]}...") # Log 200 chars
             
-            # If output_schema is JSON, try to parse
+            # Parse JSON if needed
             if lens.output_schema:
                 try:
-                    # clean markdown
-                    cleaned_content = content.replace("```json", "").replace("```", "").strip()
-                    # Repair invalid escapes (common in LaTeX like \theta -> \\theta)
-                    cleaned_content = re.sub(r'(?<!\\)\\(?![\\"/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', cleaned_content)
-                    content = json.loads(cleaned_content)
+                    content = self._parse_json_robust(content)
                 except Exception as e:
                     logger.warning(f"Failed to parse JSON output for lens {lens.key}: {e}")
-                    logger.warning(f"Raw content that failed parsing: {content}")
             
             return Artifact(
                 lens_key=lens.key,
                 source_id=source_data.id,
-                content=content, # This might be None if content is null?
+                content=content,
                 created_at=end_time,
                 usage={"duration_ms": int((end_time - start_time) * 1000)}
             )
@@ -337,12 +381,13 @@ class RunnerService:
         await self.db.commit()
         
         # 7. For paper sources, generate reading notes cards
+        batch_id = None
         if self._is_paper_source(source):
             start_time = time.time()
             await self._log_event(source.id, "lens_started", "running", lens_key="reading_notes", message="Generating reading notes")
             await self.db.commit()  # Commit so log is visible immediately
             try:
-                await self._generate_reading_notes(source, source_data, source_material)
+                batch_id = await self._generate_reading_notes(source, source_data, source_material)
                 duration_ms = int((time.time() - start_time) * 1000)
                 await self._update_lens_log(source.id, "reading_notes", "completed",
                                            message="Reading notes generated", duration_ms=duration_ms)
@@ -358,6 +403,10 @@ class RunnerService:
                 await self._update_lens_log(source.id, "reading_notes", "failed",
                                            message=err_msg, duration_ms=duration_ms)
         
+        # Throttle between lenses to avoid 429/503 from local LLM
+        import asyncio
+        await asyncio.sleep(2)
+
         # 8. Run Study Quiz Lens (Flashcards)
         if self._is_paper_source(source):
             start_time = time.time()
@@ -376,6 +425,26 @@ class RunnerService:
                 await self._update_lens_log(source.id, "study_quiz", "failed",
                                            message=err_msg, duration_ms=duration_ms)
         
+        # Throttle
+        await asyncio.sleep(2)
+
+        # 9. Run Figure Association Lens (extract and associate PDF figures with notes)
+        if self._is_paper_source(source) and fetched_content.get("pdf_bytes"):
+            start_time = time.time()
+            await self._log_event(source.id, "lens_started", "running", lens_key="figure_association", message="Extracting and associating figures")
+            await self.db.commit()
+            try:
+                await self._generate_figure_associations(source, source_material, fetched_content.get("pdf_bytes"), batch_id=batch_id)
+                duration_ms = int((time.time() - start_time) * 1000)
+                await self._update_lens_log(source.id, "figure_association", "completed",
+                                            message="Figures extracted and associated", duration_ms=duration_ms)
+            except Exception as e:
+                import traceback
+                duration_ms = int((time.time() - start_time) * 1000)
+                err_msg = str(e) or f"Error: {type(e).__name__}"
+                logger.error(f"Figure association failed: {err_msg}\n{traceback.format_exc()}")
+                await self._update_lens_log(source.id, "figure_association", "failed",
+                                           message=err_msg, duration_ms=duration_ms)
         
         await self.db.commit()
         
@@ -436,7 +505,8 @@ class RunnerService:
                     return {
                         "text": None, # No text extraction needed for this mode
                         "base64_data": base64_pdf,
-                        "mime_type": "application/pdf"
+                        "mime_type": "application/pdf",
+                        "pdf_bytes": pdf_bytes  # Keep raw bytes for figure extraction
                     }
                 else:
                     logger.error(f"Failed to download PDF: {response.status_code}")
@@ -479,13 +549,11 @@ class RunnerService:
         # Helper: Parse if string (fallback if run_lens failed to parse)
         if isinstance(notes, str):
             try:
-                # Try simple clean
-                cleaned = notes.replace("```json", "").replace("```", "").strip()
-                # Repair invalid escapes
-                cleaned = re.sub(r'(?<!\\)\\(?![\\"/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', cleaned)
-                notes = json.loads(cleaned)
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse string notes as JSON: {notes[:100]}...")
+                notes = self._parse_json_robust(notes)
+            except Exception as e:
+                logger.warning(f"Failed to parse string notes as JSON: {str(e)}")
+                # Log a snippet of the failed string for debugging
+                logger.warning(f"Failed content snippet: {notes[:200]}")
 
         if not isinstance(notes, list):
             raise ValueError(f"Reading notes lens returned non-list data: {type(notes)} - {str(notes)[:100]}...")
@@ -519,6 +587,7 @@ class RunnerService:
 
         await self.db.commit()
         logger.info(f"Generated {cards_created} reading notes for source {source.id} with batch_id {batch_id}")
+        return batch_id
 
 
     async def _generate_study_quiz(self, source: Source, source_data: SourceData, source_material: SourceMaterial):
@@ -561,3 +630,156 @@ class RunnerService:
             
         await self.db.commit()
         logger.info(f"Generated {cards_created} cards (guide + flashcards) for source {source.id}")
+
+    async def _generate_figure_associations(self, source: Source, source_material: SourceMaterial, pdf_bytes: bytes, batch_id: UUID = None):
+        """
+        Extract figures from PDF and associate them with reading note cards.
+        
+        1. Extract all significant figures from PDF
+        2. Save figures to local static directory
+        3. Run LLM to determine which figures belong to which reading note sections
+        4. Update the reading note cards with image paths
+        """
+        logger.info(f"Generating figure associations for source {source.id}")
+        
+        # 1. Extract figures
+        from app.services.pdf_extractor import extract_figures_from_arxiv_source
+        
+        figures = []
+        # Check if source is Arxiv and try source extraction first
+        url = source.connection_config.get("url", "")
+        arxiv_id = None
+        if "arxiv.org/abs/" in url:
+            arxiv_id = url.split("arxiv.org/abs/")[-1].split("v")[0] # Simple parse
+        elif "arxiv.org/pdf/" in url:
+            arxiv_id = url.split("arxiv.org/pdf/")[-1].replace(".pdf", "").split("v")[0]
+            
+        if arxiv_id:
+            logger.info(f"Detected Arxiv ID {arxiv_id}, attempting source extraction...")
+            try:
+                figures = extract_figures_from_arxiv_source(arxiv_id)
+            except Exception as e:
+                logger.error(f"Arxiv source extraction failed: {e}")
+                
+        # Fallback to PDF extraction if no figures found from source
+        if not figures:
+            logger.info("Falling back to standard PDF extraction...")
+            try:
+                figures = extract_figures_from_pdf(pdf_bytes)
+            except Exception as e:
+                logger.error(f"Failed to extract figures from PDF: {e}")
+                return
+        
+        if not figures:
+            logger.info(f"No significant figures found in PDF/Source for source {source.id}")
+            return
+        
+        # 2. Save figures to local storage
+        saved_paths = save_figures_to_local(str(source.id), figures)
+        if not saved_paths:
+            logger.warning(f"Failed to save any figures for source {source.id}")
+            return
+        
+        logger.info(f"Saved {len(saved_paths)} figures for source {source.id}")
+        
+        # 3. Run Figure Association lens to match figures to notes
+        figure_info = get_figure_info_for_prompt(figures)
+        
+        # 2b. Fetch reading note cards EARLY for context construction
+        stmt = select(Card).where(
+            Card.source_material_id == source_material.id,
+            Card.type == "reading_note"
+        )
+        
+        if batch_id:
+            logger.info(f"Filtering reading notes by batch_id: {batch_id}")
+            stmt = stmt.where(Card.batch_id == batch_id)
+            
+        stmt = stmt.order_by(Card.batch_index)
+
+        result = await self.db.execute(stmt)
+        reading_note_cards = result.scalars().all()
+        
+        if not reading_note_cards:
+            logger.warning(f"No reading note cards found for source material {source_material.id}, cannot associate figures.")
+            return
+
+        # Format reading notes for context
+        notes_text = "Reading Notes Content:\n\n"
+        for card in reading_note_cards:
+             if card.content:
+                 title = card.content.get("question", "Untitled")
+                 content = card.content.get("answer", "")
+                 notes_text += f"[Section {card.batch_index}] {title}\n{content}\n\n"
+        
+        combined_text = f"{notes_text}\n\nExtracted Figures Info:\n{figure_info}"
+
+        # 4. Optimize images for Gemini
+        from app.services.pdf_extractor import optimize_images_for_gemini
+        optimized_images = optimize_images_for_gemini(figures)
+        logger.info(f"Optimized {len(optimized_images)} images for multimodal request")
+
+        # Create SourceData for the lens
+        from app.core.lens import SourceData
+        source_data = SourceData(
+            id=str(source.id),
+            text=combined_text,  # Combine notes and figure info (text context)
+            images=optimized_images, # Actual image data for multimodal reasoning
+            metadata={"title": source.name}
+        )
+        
+        lens = get_figure_association_lens()
+        try:
+            artifact = await self.run_lens(source_data, lens)
+            associations = artifact.content
+        except Exception as e:
+            logger.error(f"Figure association lens failed: {e}")
+            # Fall back to hardcoded association (figures 0-1 to Overview of Approach section 2)
+            associations = {"associations": [{"section_index": 2, "figure_indices": [0, 1] if len(figures) > 1 else [0]}]}
+        
+        # Parse associations
+        if isinstance(associations, dict) and "associations" in associations:
+            assoc_list = associations["associations"]
+        else:
+            logger.warning(f"Unexpected associations format: {type(associations)}")
+            return
+        
+        # 5. Update cards with associated figure paths
+        
+        # 5. Update cards with associated figure paths
+        cards_updated = 0
+        for assoc in assoc_list:
+            section_index = assoc.get("section_index")
+            figure_indices = assoc.get("figure_indices", [])
+            
+            if not section_index or not figure_indices:
+                continue
+            
+            # Find the card matching this section index (batch_index corresponds to section)
+            matching_card = None
+            for card in reading_note_cards:
+                if card.batch_index == section_index:
+                    matching_card = card
+                    break
+            
+            if not matching_card:
+                logger.debug(f"No card found for section_index {section_index}")
+                continue
+            
+            # Get image paths for these figure indices
+            image_paths = []
+            for fig_idx in figure_indices:
+                if 0 <= fig_idx < len(saved_paths):
+                    image_paths.append(saved_paths[fig_idx])
+            
+            if image_paths:
+                # Update card content with images
+                new_content = dict(matching_card.content)
+                new_content["images"] = image_paths
+                matching_card.content = new_content
+                cards_updated += 1
+                logger.debug(f"Added {len(image_paths)} images to card {matching_card.id} (section {section_index})")
+        
+        await self.db.commit()
+        logger.info(f"Updated {cards_updated} reading note cards with figure associations for source {source.id}")
+

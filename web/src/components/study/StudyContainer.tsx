@@ -19,6 +19,7 @@ interface StudyCard {
     content: string
     title?: string
     answer?: string
+    images?: string[] // For reading notes
     source?: string
     sourceUrl?: string
     quizType?: "mcq" | "true_false" | "cloze"
@@ -168,6 +169,7 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                         <NoteCard
                             title={currentCard.title}
                             content={currentCard.content}
+                            images={currentCard.images}
                             source={currentCard.source}
                             onMarkRead={handleNoteRead}
                             onClip={() => console.log("Clipped")}
