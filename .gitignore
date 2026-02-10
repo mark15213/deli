@@ -52,3 +52,12 @@ DerivedData/
 *.pem
 *.key
 mem.md
+# Generated Content
+backend/static/images/*
+!backend/static/images/.gitkeep
+backend/data/*
+!backend/data/.gitkeep
+venc_data_dump*
+
+# API Client
+bruno/

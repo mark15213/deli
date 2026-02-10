@@ -14,7 +14,10 @@ export interface StudyCard {
     // Batch info for series notes (paper reading notes)
     batch_id?: string;
     batch_index?: number;
+    batch_id?: string;
+    batch_index?: number;
     batch_total?: number;
+    images?: string[];
 }
 
 export interface ReviewResponse {

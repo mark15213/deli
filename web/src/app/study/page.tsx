@@ -25,7 +25,10 @@ function mapApiCardToStudyCard(card: ApiStudyCard) {
             content: (card.type === "reading_note" && card.answer) ? card.answer : card.question,
             batch_id: card.batch_id,
             batch_index: card.batch_index,
+            batch_id: card.batch_id,
+            batch_index: card.batch_index,
             batch_total: card.batch_total,
+            images: card.images,
         }
     } else if (card.type === "flashcard" || card.type === "qa") {
         return {

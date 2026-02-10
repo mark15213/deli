@@ -153,7 +153,7 @@ class SourceDetector:
         if arxiv_id:
             try:
                 api_url = f"http://export.arxiv.org/api/query?id_list={arxiv_id}"
-                resp = requests.get(api_url, timeout=5)
+                resp = requests.get(api_url, timeout=30)
                 if resp.status_code == 200:
                     root = ET.fromstring(resp.content)
                     ns = {'atom': 'http://www.w3.org/2005/Atom'}

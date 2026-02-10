@@ -63,6 +63,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static files for extracted PDF figures
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+static_dir = Path(__file__).parent.parent / "static"
+static_dir.mkdir(exist_ok=True)
+(static_dir / "images").mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 # Include API routes
 app.include_router(api_router)
 

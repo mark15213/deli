@@ -213,6 +213,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
 
         { key: 'reading_notes', name: 'Reading Notes', description: 'Generates structured Q&A notes for learning.' },
         { key: 'study_quiz', name: 'Flashcard Generator', description: 'Generates quiz questions and glossary terms.' },
+        { key: 'figure_association', name: 'Figure Association', description: 'Extracts figures and links them to notes.' },
     ];
 
     // Combine with suggestions

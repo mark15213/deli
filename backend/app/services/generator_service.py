@@ -5,8 +5,7 @@ from typing import List
 from uuid import UUID
 import uuid
 
-from openai import AsyncOpenAI
-import instructor
+
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -34,21 +33,27 @@ class GeneratorService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.client = instructor.patch(AsyncOpenAI(api_key=settings.openai_api_key))
+        # Initialize Google GenAI Client
+        # Priority: GEMINI_API_KEY -> OPENAI_API_KEY (fallback)
+        settings = get_settings()
+        api_key = settings.gemini_api_key
+        if not api_key:
+            api_key = settings.openai_api_key # Fallback
+            
+        from google import genai
+        self.client = genai.Client(api_key=api_key)
         
     async def generate_quizzes_from_chunk(self, text_chunk: str, source_metadata: dict) -> List[Card]:
         """
         Generate quizzes from a text chunk and save them to DB.
-        source_metadata: {
-           "user_id": str,
-           "source_material_id": str (source_materials.id),
-           "chunk_index": int
-        }
         """
         try:
             # 1. Call LLM
-            quiz_outputs = await self._call_llm(text_chunk)
+            quiz_list_obj = await self._call_llm(text_chunk)
             
+            if not quiz_list_obj or not quiz_list_obj.quizzes:
+                return []
+
             generated_cards = []
             
             user_id = UUID(source_metadata["user_id"])
@@ -58,7 +63,7 @@ class GeneratorService:
             deck_id = await self._get_or_create_default_deck(user_id)
             
             # 3. Parse and Create DB Models (Card)
-            for q_out in quiz_outputs.quizzes:
+            for q_out in quiz_list_obj.quizzes:
                 card_content = {
                     "question": q_out.question,
                     "options": q_out.options,
@@ -71,7 +76,7 @@ class GeneratorService:
                     source_material_id=source_mat_id,
                     type="mcq",
                     content=card_content,
-                    # embedding=... (To be implemented with generic embedding service)
+                    # embedding=... 
                     status=CardStatus.PENDING,
                     tags=q_out.tags
                 )
@@ -108,6 +113,8 @@ class GeneratorService:
 
     async def _call_llm(self, text: str) -> QuizList:
         """Invoke LLM to generate structured quiz data."""
+        from google.genai import types
+        
         prompt = f"""
         You are an expert tutor. Create 1-3 high-quality multiple-choice questions (MCQs) based on the following text.
         
@@ -122,12 +129,29 @@ class GeneratorService:
         5. Tag the content with relevant keywords.
         """
         
-        return await self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            response_model=QuizList,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that generates quizzes."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-        )
+        settings = get_settings()
+        model_name = settings.openai_model or "gemini-3-flash"
+        
+        # Use Pydantic model for schema
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=QuizList,
+                    system_instruction="You are a helpful assistant that generates quizzes."
+                )
+            )
+            
+            # Parse response directly using Pydantic
+            # The SDK might return text that we need to parse, or if response_schema is set, it validates structure
+            # Typically response.parsed if using high level tooling, but standard generate_content returns text
+            # However, with response_schema, the text IS json.
+            import json
+            data = json.loads(response.text)
+            return QuizList(**data)
+            
+        except Exception as e:
+             logger.error(f"LLM Quiz Generation Failed: {e}")
+             return QuizList(quizzes=[])

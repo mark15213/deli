@@ -17,7 +17,7 @@ elif db_url.startswith("postgres://"):
 # Create async engine
 engine = create_async_engine(
     db_url,
-    echo=settings.debug,
+    echo=settings.db_echo,
     pool_pre_ping=True,
 )
 

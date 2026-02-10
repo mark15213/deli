@@ -111,6 +111,38 @@ def get_study_quiz_lens() -> Lens:
         }
     )
 
+def get_figure_association_lens() -> Lens:
+    """
+    Returns the Figure Association Lens.
+    Associates extracted PDF figures with reading note sections.
+    """
+    config = load_prompt_config("figure_association")
+    return Lens(
+        key="figure_association",
+        name="Figure Association",
+        description="Associates extracted PDF figures with reading note sections.",
+        system_prompt=config["system_prompt"],
+        user_prompt_template=config["user_prompt_template"],
+        output_schema={
+            "type": "object",
+            "properties": {
+                "associations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "section_index": {"type": "integer", "minimum": 1, "maximum": 9},
+                            "figure_indices": {"type": "array", "items": {"type": "integer"}},
+                            "reason": {"type": "string"}
+                        },
+                        "required": ["section_index", "figure_indices"]
+                    }
+                }
+            },
+            "required": ["associations"]
+        }
+    )
+
 def get_lens_by_key(key: str) -> Lens:
     """
     Factory to retrieve a lens by key.
@@ -123,7 +155,10 @@ def get_lens_by_key(key: str) -> Lens:
         return get_reading_notes_lens()
     elif key == "study_quiz":
         return get_study_quiz_lens()
+    elif key == "figure_association":
+        return get_figure_association_lens()
     
     # Dynamic/Generic fallback or other hardcoded lenses
     # For now, return a generic one or raise error
     raise ValueError(f"Lens key '{key}' not found.")
+

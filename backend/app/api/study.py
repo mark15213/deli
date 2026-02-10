@@ -38,6 +38,8 @@ class StudyCard(BaseModel):
     answer: Optional[str] = None
     options: Optional[List[str]] = None
     explanation: Optional[str] = None
+    explanation: Optional[str] = None
+    images: Optional[List[str]] = None  # For reading notes
     tags: List[str] = []
     source_title: Optional[str] = None
     deck_ids: List[UUID] = []
@@ -260,6 +262,7 @@ async def get_study_queue(
             answer=card.content.get("answer") if card.content else None,
             options=card.content.get("options") if card.content else None,
             explanation=card.content.get("explanation") if card.content else None,
+            images=card.content.get("images") if card.content else None,
             tags=card.tags or [],
             source_title=card.source_material.source.name if card.source_material and card.source_material.source else None,
             deck_ids=[d.id for d in card.decks],

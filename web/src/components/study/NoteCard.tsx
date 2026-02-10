@@ -9,18 +9,19 @@ import rehypeKatex from 'rehype-katex'
 interface NoteCardProps {
     title?: string
     content: string
+    images?: string[]
     source?: string
     onMarkRead: () => void
     onClip?: () => void
 }
 
-export function NoteCard({ title, content, source, onMarkRead, onClip }: NoteCardProps) {
+export function NoteCard({ title, content, images, source, onMarkRead, onClip }: NoteCardProps) {
     return (
         <div className="flex flex-col h-full bg-gradient-to-b from-background to-muted/20">
             {/* Content Area */}
             <div className="flex-1 flex flex-col px-4 py-8 md:px-8 md:py-10 overflow-hidden">
                 <div className="max-w-3xl mx-auto w-full flex flex-col h-full">
-                    {/* Header with Source & Title */}
+                    {/* Header with Source & Title & Images */}
                     <div className="mb-6 space-y-4 shrink-0">
                         {source && (
                             <div className="flex justify-center">
@@ -34,6 +35,22 @@ export function NoteCard({ title, content, source, onMarkRead, onClip }: NoteCar
                             <h2 className="text-2xl md:text-3xl font-bold text-center text-foreground tracking-tight leading-tight">
                                 {title}
                             </h2>
+                        )}
+                        {images && images.length > 0 && (
+                            <div className="flex gap-4 overflow-x-auto pb-2 justify-center snap-x">
+                                {images.map((img, idx) => (
+                                    <div key={idx} className="relative shrink-0 snap-center">
+                                        {/* Use backend URL for static images */}
+                                        <img
+                                            src={`http://127.0.0.1:8000${img}`}
+                                            alt={`Figure ${idx + 1}`}
+                                            className="h-48 md:h-64 rounded-lg shadow-md object-contain bg-white/5 border"
+                                            onClick={() => window.open(`http://127.0.0.1:8000${img}`, '_blank')}
+                                            style={{ cursor: 'zoom-in' }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
 

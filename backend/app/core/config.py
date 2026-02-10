@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Deli API"
     app_version: str = "0.1.0"
     debug: bool = False
+    db_echo: bool = False # Enable SQL echo (independent of debug mode)
     dev_mode: bool = False  # Enable mock auth and seed data in development
     
     # Database
@@ -23,9 +24,10 @@ class Settings(BaseSettings):
     notion_client_secret: str = ""
     notion_redirect_uri: str = "http://localhost:8000/api/v1/auth/notion/callback"
     
-    # OpenAI
+    # OpenAI / Gemini
     openai_api_key: str = ""
-    openai_model: str = "gpt-4-turbo-preview"
+    gemini_api_key: str = "" # Native Gemini API Key
+    openai_model: str = "gemini-3-flash" # Default model name
     openai_base_url: str | None = None
     
     # Security
