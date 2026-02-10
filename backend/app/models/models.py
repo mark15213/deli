@@ -148,7 +148,7 @@ class Card(Base):
     type: Mapped[str] = mapped_column(String(30)) # 'mcq', 'cloze', 'code'
     content: Mapped[dict] = mapped_column(JSONB) # Q/A, options, etc
     
-    status: Mapped[CardStatus] = mapped_column(Enum(CardStatus), default=CardStatus.PENDING)
+    status: Mapped[CardStatus] = mapped_column(Enum(CardStatus, values_callable=lambda x: [e.value for e in x]), default=CardStatus.PENDING)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     
     # Batch grouping for series notes (e.g., paper reading notes)
@@ -192,7 +192,7 @@ class StudyProgress(Base):
     scheduled_days: Mapped[float] = mapped_column(Float, default=0.0)
     retrievability: Mapped[float] = mapped_column(Float, default=0.0)
     
-    state: Mapped[FSRSState] = mapped_column(Enum(FSRSState), default=FSRSState.NEW)
+    state: Mapped[FSRSState] = mapped_column(Enum(FSRSState, values_callable=lambda x: [e.value for e in x]), default=FSRSState.NEW)
     due_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     last_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -216,7 +216,7 @@ class ReviewLog(Base):
     
     grade: Mapped[int] = mapped_column(Integer) # 1-4
     
-    state_before: Mapped[Optional[FSRSState]] = mapped_column(Enum(FSRSState), nullable=True)
+    state_before: Mapped[Optional[FSRSState]] = mapped_column(Enum(FSRSState, values_callable=lambda x: [e.value for e in x]), nullable=True)
     stability_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     difficulty_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
