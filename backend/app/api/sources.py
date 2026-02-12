@@ -39,17 +39,23 @@ async def get_sources(
     result = await db.execute(stmt)
     sources = result.scalars().all()
     
-    # Add children_count to each source
-    response_sources = []
-    for source in sources:
-        # Count children
-        count_stmt = select(func.count()).select_from(Source).where(
-            Source.parent_source_id == source.id
+    # Batch query for children counts (avoid N+1)
+    source_ids = [s.id for s in sources]
+    children_counts = {}
+    if source_ids:
+        count_stmt = (
+            select(Source.parent_source_id, func.count().label("cnt"))
+            .where(Source.parent_source_id.in_(source_ids))
+            .group_by(Source.parent_source_id)
         )
         count_result = await db.execute(count_stmt)
-        children_count = count_result.scalar() or 0
+        children_counts = {row.parent_source_id: row.cnt for row in count_result.fetchall()}
+    
+    # Build response
+    response_sources = []
+    for source in sources:
+        children_count = children_counts.get(source.id, 0)
         
-        # Convert to dict and add children_count
         source_dict = {
             "id": source.id,
             "name": source.name,

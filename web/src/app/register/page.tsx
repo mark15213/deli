@@ -85,7 +85,7 @@ export default function RegisterPage() {
         <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 px-4">
             <Card className="w-full max-w-md">
                 <CardHeader className="flex flex-col items-center space-y-4">
-                    <Image src="/images/logo.png" alt="Deli" width={40} height={40} className="rounded-lg" />
+                    <Image src="/images/logo.png" alt="Gulp" width={40} height={40} className="rounded-lg" />
                     <CardDescription className="text-center">
                         Enter your email below to create your account
                     </CardDescription>
