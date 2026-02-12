@@ -112,3 +112,76 @@ export async function getStudyPapers(): Promise<PaperStudyGroup[]> {
 
     return res.json();
 }
+
+// --- Bookmarks ---
+
+export interface BookmarkResponse {
+    id: string;
+    card_id: string;
+    card_type: string;
+    card_question: string;
+    card_answer?: string;
+    source_title?: string;
+    note?: string;
+    created_at: string;
+}
+
+export async function bookmarkCard(cardId: string, note?: string): Promise<BookmarkResponse> {
+    const res = await fetchClient(`/bookmarks/${cardId}`, {
+        method: "POST",
+        body: JSON.stringify({ note: note || null }),
+    });
+    if (!res.ok) throw new Error("Failed to bookmark card");
+    return res.json();
+}
+
+export async function unbookmarkCard(cardId: string): Promise<void> {
+    const res = await fetchClient(`/bookmarks/${cardId}`, {
+        method: "DELETE",
+    });
+    if (!res.ok && res.status !== 404) throw new Error("Failed to remove bookmark");
+}
+
+export async function getBookmarks(): Promise<BookmarkResponse[]> {
+    const res = await fetchClient(`/bookmarks`);
+    if (!res.ok) throw new Error("Failed to fetch bookmarks");
+    return res.json();
+}
+
+export async function checkBookmark(cardId: string): Promise<boolean> {
+    const res = await fetchClient(`/bookmarks/check/${cardId}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.bookmarked;
+}
+
+// --- Gulp Feed ---
+
+export interface GulpCard {
+    id: string;
+    type: string;
+    question: string;
+    answer?: string;
+    options?: string[];
+    explanation?: string;
+    images?: string[];
+    tags: string[];
+    source_title?: string;
+    source_url?: string;
+    is_bookmarked: boolean;
+    batch_id?: string;
+    batch_index?: number;
+    batch_total?: number;
+}
+
+export interface GulpFeed {
+    cards: GulpCard[];
+    total: number;
+    has_more: boolean;
+}
+
+export async function getGulpFeed(limit = 30, offset = 0): Promise<GulpFeed> {
+    const res = await fetchClient(`/study/gulp?limit=${limit}&offset=${offset}`);
+    if (!res.ok) throw new Error("Failed to fetch gulp feed");
+    return res.json();
+}

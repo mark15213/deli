@@ -146,3 +146,37 @@ body {
 .reader-card-area {
   min-height: 300px;
 }
+
+/* ===== Gulp Mode Styles ===== */
+
+.gulp-container {
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.gulp-container::-webkit-scrollbar {
+  display: none;
+}
+
+.gulp-snap-item {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  min-height: 100%;
+}
+
+.gulp-card {
+  animation: gulp-fade-in 0.4s ease-out;
+}
+
+@keyframes gulp-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

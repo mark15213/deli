@@ -53,6 +53,7 @@ class User(Base):
     decks: Mapped[List["Deck"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     study_progress: Mapped[List["StudyProgress"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     subscriptions: Mapped[List["DeckSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    bookmarks: Mapped[List["CardBookmark"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class OAuthConnection(Base):
@@ -161,6 +162,7 @@ class Card(Base):
     decks: Mapped[List["Deck"]] = relationship(secondary=card_decks, back_populates="cards")
     source_material: Mapped["SourceMaterial"] = relationship(back_populates="cards")
     study_progress: Mapped[List["StudyProgress"]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    bookmarks: Mapped[List["CardBookmark"]] = relationship(back_populates="card", cascade="all, delete-orphan")
 
 
 class DeckSubscription(Base):
@@ -225,6 +227,27 @@ class ReviewLog(Base):
 
     # No relationships defined for simple log table to avoid overhead, 
     # but can add if needed.
+
+
+class CardBookmark(Base):
+    """User bookmarks for important cards (Clip/Gulp feature)."""
+    __tablename__ = "card_bookmarks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"), index=True)
+    
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # User's personal note
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'card_id', name='uq_bookmark_user_card'),
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="bookmarks")
+    card: Mapped["Card"] = relationship(back_populates="bookmarks")
+
 
 class Source(Base):
     """

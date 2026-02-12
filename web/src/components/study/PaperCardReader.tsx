@@ -88,8 +88,15 @@ export function PaperCardReader({ paper, onBack, onComplete }: PaperCardReaderPr
     }, [currentCard, currentIndex, cards])
 
     const handleClip = useCallback(async () => {
-        // Future: clip/save functionality
-        console.log("Clip card:", currentCard?.id)
+        if (!currentCard) return
+        try {
+            const { bookmarkCard } = await import("@/lib/api/study")
+            await bookmarkCard(currentCard.id)
+            // Visual feedback - could add toast later
+            console.log("Clipped card:", currentCard.id)
+        } catch (e) {
+            console.error("Failed to clip card:", e)
+        }
     }, [currentCard])
 
     // Completed state

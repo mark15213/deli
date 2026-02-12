@@ -11,6 +11,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading, isAuthenticated } = useAuth();
 
     const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/auth");
+    const isFullScreen = pathname.startsWith("/gulp");
 
     useEffect(() => {
         if (!isLoading) {
@@ -36,6 +37,15 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
 
     if (!isAuthenticated) {
         return null; // Will redirect via useEffect
+    }
+
+    // Full-screen mode (no sidebar) for immersive views like Gulp
+    if (isFullScreen) {
+        return (
+            <div className="h-screen bg-background overflow-hidden">
+                {children}
+            </div>
+        );
     }
 
     return (

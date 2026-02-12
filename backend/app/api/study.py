@@ -682,3 +682,184 @@ async def skip_batch(
         batch_id=batch_id,
         cards_skipped=skipped_count,
     )
+
+
+# --- Gulp Mode Feed ---
+
+class GulpCard(BaseModel):
+    """A card formatted for the Gulp feed (TikTok-style learning)."""
+    id: UUID
+    type: str  # note, reading_note, flashcard, quiz
+    question: str
+    answer: Optional[str] = None
+    options: Optional[List[str]] = None
+    explanation: Optional[str] = None
+    images: Optional[List[str]] = None
+    tags: List[str] = []
+    source_title: Optional[str] = None
+    source_url: Optional[str] = None
+    is_bookmarked: bool = False
+    batch_id: Optional[UUID] = None
+    batch_index: Optional[int] = None
+    batch_total: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GulpFeed(BaseModel):
+    cards: List[GulpCard]
+    total: int
+    has_more: bool
+
+
+@router.get("/gulp", response_model=GulpFeed)
+async def get_gulp_feed(
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get Gulp mode feed — TikTok-style learning cards.
+    
+    Strategy:
+    1. Bookmarked cards get priority
+    2. Then FSRS-due cards
+    3. Interleave sources to avoid monotony
+    4. Mix card types (note → flashcard → quiz)
+    """
+    from app.models import CardBookmark
+    from collections import defaultdict
+    
+    now = datetime.now(timezone.utc)
+    
+    # Get subscribed deck IDs
+    sub_stmt = select(DeckSubscription.deck_id).where(
+        DeckSubscription.user_id == current_user.id
+    )
+    sub_result = await db.execute(sub_stmt)
+    subscribed_deck_ids = [row[0] for row in sub_result.fetchall()]
+    
+    if not subscribed_deck_ids:
+        return GulpFeed(cards=[], total=0, has_more=False)
+    
+    # Get user's bookmarked card IDs
+    bookmark_stmt = select(CardBookmark.card_id).where(
+        CardBookmark.user_id == current_user.id
+    )
+    bookmark_result = await db.execute(bookmark_stmt)
+    bookmarked_ids = set(row[0] for row in bookmark_result.fetchall())
+    
+    # Get all eligible cards from subscribed decks
+    cards_stmt = (
+        select(Card)
+        .join(Card.decks)
+        .where(
+            Deck.id.in_(subscribed_deck_ids),
+            Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
+        )
+        .options(
+            selectinload(Card.decks),
+            selectinload(Card.source_material).selectinload(SourceMaterial.source)
+        )
+        .order_by(Card.created_at.desc())
+        .limit(300)  # Fetch pool
+    )
+    cards_result = await db.execute(cards_stmt)
+    all_cards = list({c.id: c for c in cards_result.scalars().all()}.values())
+    
+    # Get study progress for filtering
+    card_ids = [c.id for c in all_cards]
+    progress_map = {}
+    if card_ids:
+        progress_stmt = select(StudyProgress).where(
+            StudyProgress.user_id == current_user.id,
+            StudyProgress.card_id.in_(card_ids),
+        )
+        progress_result = await db.execute(progress_stmt)
+        progress_map = {p.card_id: p for p in progress_result.scalars().all()}
+    
+    # Filter to due cards (new or due_date <= now)
+    due_cards = []
+    for card in all_cards:
+        progress = progress_map.get(card.id)
+        if progress is None or progress.due_date <= now:
+            due_cards.append(card)
+    
+    # Split into bookmarked and non-bookmarked
+    bookmarked_cards = [c for c in due_cards if c.id in bookmarked_ids]
+    regular_cards = [c for c in due_cards if c.id not in bookmarked_ids]
+    
+    # Calculate batch totals
+    batch_totals = {}
+    batch_ids_to_query = set(c.batch_id for c in due_cards if c.batch_id)
+    if batch_ids_to_query:
+        batch_count_stmt = (
+            select(Card.batch_id, func.count(Card.id))
+            .where(Card.batch_id.in_(batch_ids_to_query))
+            .group_by(Card.batch_id)
+        )
+        batch_result = await db.execute(batch_count_stmt)
+        batch_totals = {row[0]: row[1] for row in batch_result.fetchall()}
+    
+    # --- Interleave Strategy ---
+    # Group regular cards by source for interleaving
+    source_buckets: dict[str, list] = defaultdict(list)
+    for card in regular_cards:
+        source_key = str(card.source_material_id) if card.source_material_id else "unknown"
+        source_buckets[source_key].append(card)
+    
+    # Round-robin interleave sources
+    interleaved = []
+    bucket_keys = list(source_buckets.keys())
+    bucket_indices = {k: 0 for k in bucket_keys}
+    
+    while len(interleaved) < len(regular_cards):
+        added_any = False
+        for key in bucket_keys:
+            idx = bucket_indices[key]
+            bucket = source_buckets[key]
+            if idx < len(bucket):
+                interleaved.append(bucket[idx])
+                bucket_indices[key] = idx + 1
+                added_any = True
+        if not added_any:
+            break
+    
+    # Merge: bookmarked first, then interleaved regular
+    merged = bookmarked_cards + interleaved
+    
+    total = len(merged)
+    page = merged[offset:offset + limit]
+    
+    def to_gulp_card(card: Card) -> GulpCard:
+        sm = card.source_material
+        source_title = None
+        source_url = None
+        if sm and sm.source:
+            source_title = sm.source.name
+            source_url = (sm.source.connection_config or {}).get("url")
+        
+        return GulpCard(
+            id=card.id,
+            type=card.type,
+            question=card.content.get("question", "") if card.content else "",
+            answer=card.content.get("answer") if card.content else None,
+            options=card.content.get("options") if card.content else None,
+            explanation=card.content.get("explanation") if card.content else None,
+            images=card.content.get("images") if card.content else None,
+            tags=card.tags or [],
+            source_title=source_title,
+            source_url=source_url,
+            is_bookmarked=card.id in bookmarked_ids,
+            batch_id=card.batch_id,
+            batch_index=card.batch_index,
+            batch_total=batch_totals.get(card.batch_id) if card.batch_id else None,
+        )
+    
+    return GulpFeed(
+        cards=[to_gulp_card(c) for c in page],
+        total=total,
+        has_more=(offset + limit) < total,
+    )
