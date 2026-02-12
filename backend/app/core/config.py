@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
     
+    # Storage
+    storage_dir: str = "app/static"  # Default to local static dir
+    
     # Notion OAuth
     notion_client_id: str = ""
     notion_client_secret: str = ""

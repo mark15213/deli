@@ -67,10 +67,10 @@ app.add_middleware(
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-static_dir = Path(__file__).parent.parent / "static"
-static_dir.mkdir(exist_ok=True)
-(static_dir / "images").mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+static_path = Path(settings.storage_dir)
+static_path.mkdir(parents=True, exist_ok=True)
+(static_path / "images").mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 # Include API routes
 app.include_router(api_router)
