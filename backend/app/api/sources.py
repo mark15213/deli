@@ -297,6 +297,13 @@ async def sync_source(
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     
+    if source.category == "SNAPSHOT":
+        # For snapshots (papers), manual sync means re-triggering processing
+        from app.background.paper_tasks import process_paper_background
+        import asyncio
+        asyncio.create_task(process_paper_background(source.id))
+        return {"status": "processing_triggered", "message": f"Processing triggered for source {source.id}"}
+
     return await sync_source_internal(db, source)
 
 
