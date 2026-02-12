@@ -252,6 +252,15 @@ async def delete_source(
     
     await db.delete(source)
     await db.commit()
+    
+    # Clean up associated images
+    import shutil
+    from pathlib import Path
+    from app.core.config import get_settings
+    images_dir = Path(get_settings().storage_dir) / "images" / str(source_id)
+    if images_dir.exists():
+        shutil.rmtree(images_dir, ignore_errors=True)
+    
     return {"ok": True}
 
 @router.post("/{source_id}/sync")

@@ -163,9 +163,54 @@ import tarfile
 import shutil
 import tempfile
 
+def _parse_referenced_figures_from_dir(source_dir: Path) -> set:
+    """
+    Parse all .tex files to find \\includegraphics references.
+    Returns a set of referenced image paths. Skips commented-out lines.
+    """
+    import re as _re
+    referenced = set()
+    pattern = _re.compile(r'\\includegraphics(?:\[.*?\])?\{([^}]+)\}')
+    
+    for tex_file in source_dir.rglob("*.tex"):
+        try:
+            content = tex_file.read_text(encoding='utf-8', errors='ignore')
+            for line in content.splitlines():
+                if line.strip().startswith('%'):
+                    continue
+                for match in pattern.finditer(line):
+                    referenced.add(match.group(1).strip())
+        except Exception as e:
+            logger.warning(f"Failed to parse {tex_file}: {e}")
+    
+    return referenced
+
+
+def _is_file_referenced(file_path: Path, source_dir: Path, referenced: set) -> bool:
+    """Check if a file matches any LaTeX \\includegraphics reference."""
+    try:
+        rel_path = file_path.relative_to(source_dir)
+    except ValueError:
+        rel_path = Path(file_path.name)
+    
+    rel_str = str(rel_path)
+    rel_no_ext = str(rel_path.with_suffix(''))
+    
+    for ref in referenced:
+        ref_clean = ref.lstrip('./')
+        ref_no_ext = str(Path(ref_clean).with_suffix(''))
+        if rel_str == ref_clean or rel_no_ext == ref_no_ext:
+            return True
+    return False
+
+
+IMAGE_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg'}
+
+
 def extract_figures_from_arxiv_source(arxiv_id: str) -> List[ExtractedFigure]:
     """
-    Download Arxiv source, extract figures (PDFs), and convert to PNG.
+    Download Arxiv source, extract figures (PDF/PNG/JPEG), and return as ExtractedFigure list.
+    Uses LaTeX \\includegraphics parsing to only extract figures actually referenced in the paper.
     """
     url = f"https://arxiv.org/e-print/{arxiv_id}"
     logger.info(f"Downloading source from {url}...")
@@ -180,54 +225,79 @@ def extract_figures_from_arxiv_source(arxiv_id: str) -> List[ExtractedFigure]:
         
         try:
             # Download
-            response = requests.get(url, stream=True)
+            response = requests.get(url, stream=True, timeout=60)
             if response.status_code != 200:
                 logger.error(f"Failed to download Arxiv source: {response.status_code}")
                 return []
                 
             # Extract
             try:
-                # Try opening as tar.gz
                 with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
                     tar.extractall(path=source_dir)
             except tarfile.ReadError:
                 logger.warning("Arxiv source is not a valid tar.gz. Might be a single file or unavailable.")
                 return []
             
-            # Walk and find PDFs
-            # Logic adapted from user's test script
+            # Parse LaTeX references for smart filtering
+            referenced = _parse_referenced_figures_from_dir(source_dir)
+            use_latex_filter = len(referenced) > 0
+            if use_latex_filter:
+                logger.info(f"LaTeX filter: {len(referenced)} referenced figures found")
+            
+            # Walk and find image files
             for root, dirs, files in os.walk(source_dir):
                 for file in files:
-                    if file.lower().endswith(".pdf"):
-                        file_path = Path(root) / file
-                        
-                        # Skip large files (likely the main paper)
-                        if file_path.stat().st_size > 5 * 1024 * 1024:
-                            logger.info(f"Skipping large PDF (likely full paper): {file}")
-                            continue
+                    ext = os.path.splitext(file)[1].lower()
+                    if ext not in IMAGE_EXTENSIONS:
+                        continue
+                    
+                    file_path = Path(root) / file
+                    
+                    # Skip large files (> 5MB, likely full papers or raw photos)
+                    if file_path.stat().st_size > 5 * 1024 * 1024:
+                        logger.debug(f"Skipping large file: {file}")
+                        continue
+                    
+                    # LaTeX filter
+                    if use_latex_filter and not _is_file_referenced(file_path, source_dir, referenced):
+                        logger.debug(f"Skipping unreferenced file: {file}")
+                        continue
 
-                        try:
+                    try:
+                        if ext == '.pdf':
                             # Convert first page of PDF figure to PNG
                             doc = fitz.open(file_path)
                             if len(doc) > 0:
                                 page = doc[0]
                                 pix = page.get_pixmap(dpi=300)
                                 image_bytes = pix.tobytes("png")
-                                
-                                figures.append(ExtractedFigure(
-                                    index=figure_index,
-                                    page_num=1, # Figure files usually 1 page
-                                    image_bytes=image_bytes,
-                                    width=pix.width,
-                                    height=pix.height,
-                                    format="png",
-                                    caption=file # Use filename as caption/id
-                                ))
-                                figure_index += 1
+                                width, height = pix.width, pix.height
                                 doc.close()
-                        except Exception as e:
-                            logger.warning(f"Failed to convert figure PDF {file}: {e}")
-                            continue
+                            else:
+                                doc.close()
+                                continue
+                        else:
+                            # PNG/JPEG: read bytes directly
+                            image_bytes = file_path.read_bytes()
+                            # Get dimensions using PIL
+                            from PIL import Image as PILImage
+                            img = PILImage.open(io.BytesIO(image_bytes))
+                            width, height = img.size
+                            img.close()
+                        
+                        figures.append(ExtractedFigure(
+                            index=figure_index,
+                            page_num=1,
+                            image_bytes=image_bytes,
+                            width=width,
+                            height=height,
+                            format="png" if ext == '.pdf' else ext.lstrip('.'),
+                            caption=file  # Use filename as caption/id
+                        ))
+                        figure_index += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to process figure {file}: {e}")
+                        continue
 
         except Exception as e:
             logger.error(f"Error extracting figures from Arxiv source: {e}")
