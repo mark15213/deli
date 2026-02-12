@@ -60,7 +60,7 @@ export function NoteCard({ title, content, images, source, onMarkRead, onClip }:
                                 <DialogTrigger asChild>
                                     <div className="w-full h-full cursor-zoom-in">
                                         <img
-                                            src={`http://127.0.0.1:8000${images[currentImageIndex]}`}
+                                            src={images[currentImageIndex].startsWith('http') ? images[currentImageIndex] : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${images[currentImageIndex]}`}
                                             alt={`Figure ${currentImageIndex + 1}`}
                                             className="w-full h-full object-contain p-2"
                                         />
@@ -69,7 +69,7 @@ export function NoteCard({ title, content, images, source, onMarkRead, onClip }:
                                 <DialogContent className="max-w-7xl w-full p-1 bg-transparent border-none shadow-none sm:rounded-none">
                                     <div className="relative w-full h-full flex items-center justify-center">
                                         <img
-                                            src={`http://127.0.0.1:8000${images[currentImageIndex]}`}
+                                            src={images[currentImageIndex].startsWith('http') ? images[currentImageIndex] : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${images[currentImageIndex]}`}
                                             alt={`Figure ${currentImageIndex + 1}`}
                                             className="max-h-[90vh] w-auto max-w-full rounded-lg shadow-2xl object-contain bg-background/95 backdrop-blur-sm"
                                         />

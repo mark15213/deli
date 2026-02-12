@@ -24,7 +24,11 @@ MIN_IMAGE_WIDTH = 100
 MIN_IMAGE_HEIGHT = 100
 
 # Static images directory
-STATIC_IMAGES_DIR = Path(__file__).parent.parent.parent / "static" / "images"
+from app.core.config import get_settings
+settings = get_settings()
+
+# Static images directory
+STATIC_IMAGES_DIR = Path(settings.storage_dir) / "images"
 
 
 @dataclass
