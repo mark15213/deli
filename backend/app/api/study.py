@@ -12,7 +12,7 @@ from sqlalchemy import select, func, and_, case
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, is_shared_mode
 from app.models import (
     User, Deck, Card, CardStatus, DeckSubscription, 
     StudyProgress, FSRSState, ReviewLog, card_decks, SourceMaterial
@@ -38,7 +38,7 @@ class StudyCard(BaseModel):
     answer: Optional[str] = None
     options: Optional[List[str]] = None
     explanation: Optional[str] = None
-    explanation: Optional[str] = None
+
     images: Optional[List[str]] = None  # For reading notes
     tags: List[str] = []
     source_title: Optional[str] = None
@@ -150,32 +150,22 @@ async def get_study_queue(
     
     target_deck_ids = []
     
-    if deck_id:
-        # Check if user is subscribed to the requested deck
-        if deck_id not in subscribed_deck_ids:
-             # Or maybe they are the owner? Owner automatically subscribed? 
-             # For now, require subscription for study
-             # Actually, let's allow if they are owner too even if not subscribed explicitly (though owner is usually subscribed)
-             # But strictly, subscription drives study queue.
-             pass
-        
-        # We will filter by this deck_id, but we should make sure it's a valid ID for this user (subscribed)
-        if deck_id in subscribed_deck_ids:
+    if is_shared_mode():
+        # In shared mode, allow studying any requested deck, or default to subscribed
+        if deck_id:
             target_deck_ids = [deck_id]
         else:
-            # If not subscribed, return empty or error? 
-            # Let's return empty to be safe, or check if they are owner. 
-            pass
-            
-        # Simplified: Just trust the filter. If not subscribed, logic below might return nothing if we restrict to subscribed.
-        # But wait, original logic was: Deck.id.in_(subscribed_deck_ids). 
-        # So we just need to intersect.
-        if deck_id in subscribed_deck_ids:
-            target_deck_ids = [deck_id]
-        else:
-             return []
+            # For "study all", we still stick to subscribed decks to avoid overwhelming user
+            target_deck_ids = subscribed_deck_ids
     else:
-        target_deck_ids = subscribed_deck_ids
+        # Non-shared mode: Strict subscription check
+        if deck_id:
+            if deck_id in subscribed_deck_ids:
+                target_deck_ids = [deck_id]
+            else:
+                 return []
+        else:
+            target_deck_ids = subscribed_deck_ids
 
     if not target_deck_ids:
         return []
@@ -301,15 +291,23 @@ async def get_study_papers(
     sub_result = await db.execute(sub_stmt)
     subscribed_deck_ids = [row[0] for row in sub_result.fetchall()]
     
-    if not subscribed_deck_ids:
-        return []
     
-    # Get all active/pending cards from subscribed decks with source info
+    # Get all active/pending cards
     cards_stmt = (
         select(Card)
         .join(Card.decks)
-        .where(
-            Deck.id.in_(subscribed_deck_ids),
+    )
+    
+    if is_shared_mode():
+        # Shared mode: fetch from all decks (or strict to valid decks if strictly needed, but broad is better)
+        pass
+    else:
+        if not subscribed_deck_ids:
+            return []
+        cards_stmt = cards_stmt.where(Deck.id.in_(subscribed_deck_ids))
+        
+    cards_stmt = (
+        cards_stmt.where(
             Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
             Card.source_material_id.isnot(None),  # Must have a source
         )
@@ -466,8 +464,11 @@ async def submit_review(
     
     # Check if any of card's decks are in subscribed_ids
     has_access = any(d.id in subscribed_ids for d in card.decks)
-    # Also owner can review? Maybe.
-    if not has_access and card.owner_id != current_user.id:
+    
+    if is_shared_mode():
+        # In shared mode, allow reviewing any card (implicit access)
+        pass 
+    elif not has_access and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Get or create study progress
@@ -740,10 +741,7 @@ async def get_gulp_feed(
     )
     sub_result = await db.execute(sub_stmt)
     subscribed_deck_ids = [row[0] for row in sub_result.fetchall()]
-    
-    if not subscribed_deck_ids:
-        return GulpFeed(cards=[], total=0, has_more=False)
-    
+
     # Get user's bookmarked card IDs
     bookmark_stmt = select(CardBookmark.card_id).where(
         CardBookmark.user_id == current_user.id
@@ -751,12 +749,23 @@ async def get_gulp_feed(
     bookmark_result = await db.execute(bookmark_stmt)
     bookmarked_ids = set(row[0] for row in bookmark_result.fetchall())
     
-    # Get all eligible cards from subscribed decks
+    # Get all eligible cards
     cards_stmt = (
         select(Card)
         .join(Card.decks)
+    )
+    
+    if is_shared_mode():
+        # Shared mode: all decks
+        pass
+    else:
+        if not subscribed_deck_ids:
+            return GulpFeed(cards=[], total=0, has_more=False)
+        cards_stmt = cards_stmt.where(Deck.id.in_(subscribed_deck_ids))
+        
+    cards_stmt = (
+        cards_stmt
         .where(
-            Deck.id.in_(subscribed_deck_ids),
             Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
         )
         .options(
