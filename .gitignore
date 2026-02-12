@@ -53,8 +53,7 @@ DerivedData/
 *.key
 mem.md
 # Generated Content
-backend/static/images/*
-!backend/static/images/.gitkeep
+backend/app/static/
 backend/data/*
 !backend/data/.gitkeep
 venc_data_dump*

@@ -10,6 +10,7 @@ from app.api import api_router
 from app.core.database import async_session_maker
 from app.core.debug_data import reseed_debug_sources
 from app.core.seed_data import reset_seed_data
+from sqlalchemy import text
 
 from app.core.logging_config import setup_logging
 
@@ -21,8 +22,15 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
+    import os
     # Startup
     print(f"Starting {settings.app_name} v{settings.app_version}")
+    
+    # Pre-warm the DB connection pool to avoid cold-start latency
+    from app.core.database import engine
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+    print("Database connection pool pre-warmed.")
     
     # Dev mode: seed test data
     if settings.dev_mode:
@@ -35,14 +43,29 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Startup warning: Failed to seed data: {e}")
     
-    # Start background sync scheduler
-    from app.background.sync_scheduler import start_scheduler_task, stop_scheduler
-    await start_scheduler_task()
-    print("Background sync scheduler started.")
+    # Start background sync scheduler only in one worker (use a lock file)
+    scheduler_started = False
+    lock_file = "/tmp/deli_scheduler.lock"
+    try:
+        fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        scheduler_started = True
+        from app.background.sync_scheduler import start_scheduler_task, stop_scheduler
+        await start_scheduler_task()
+        print(f"Background sync scheduler started (worker PID {os.getpid()}).")
+    except FileExistsError:
+        print(f"Scheduler already running in another worker, skipping (PID {os.getpid()}).")
     
     yield
     # Shutdown
-    stop_scheduler()
+    if scheduler_started:
+        from app.background.sync_scheduler import stop_scheduler
+        stop_scheduler()
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
     print("Shutting down...")
 
 
