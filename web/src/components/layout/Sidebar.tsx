@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Home, Rss, Inbox, Layers, Brain, ChevronLeft, ChevronRight, LogOut, Beaker } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -51,9 +52,9 @@ export function Sidebar() {
         >
             <div className="flex h-16 items-center border-b px-4 justify-between">
                 {!collapsed && (
-                    <span className="text-xl font-bold text-primary">
-                        Gulp
-                    </span>
+                    <Link href="/" className="flex items-center">
+                        <span className="text-xl font-bold text-primary">Gulp</span>
+                    </Link>
                 )}
                 <Button
                     variant="ghost"

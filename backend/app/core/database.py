@@ -19,6 +19,8 @@ engine = create_async_engine(
     db_url,
     echo=settings.db_echo,
     pool_pre_ping=True,
+    pool_size=20,     # Increase pool size to handle more concurrent connections
+    max_overflow=10,  # Allow extra connections during spikes
 )
 
 # Session factory
