@@ -118,13 +118,16 @@ class HFDailyFetcher(BaseFetcher):
         
         logger.info(f"Starting HF Daily Papers fetch with config: max_papers={config.max_papers_per_sync}, min_upvotes={config.min_upvotes}")
         
-        # Get proxy from environment or use default
-        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "http://127.0.0.1:7897"
+        # Get proxy from environment
+        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
         
         try:
-            # Use httpx with proxy
+            # Use httpx
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, proxy=proxy) as client:
-                logger.info(f"Requesting {self.HF_PAPERS_API} via proxy {proxy}")
+                if proxy:
+                    logger.info(f"Requesting {self.HF_PAPERS_API} via proxy {proxy}")
+                else:
+                    logger.info(f"Requesting {self.HF_PAPERS_API} (direct)")
                 resp = await client.get(self.HF_PAPERS_API)
                 resp.raise_for_status()
                 papers = resp.json()
