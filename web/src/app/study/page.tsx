@@ -1,115 +1,107 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
-import { StudyContainer } from "@/components/study/StudyContainer"
-import { getStudyQueue, submitReview, type StudyCard as ApiStudyCard, type Rating } from "@/lib/api/study"
+import { useState, useEffect, useCallback } from "react"
+import { PaperBookShelf } from "@/components/study/PaperBookShelf"
+import { PaperCardReader } from "@/components/study/PaperCardReader"
+import { getStudyPapers, type PaperStudyGroup } from "@/lib/api/study"
 import { Loader2 } from "lucide-react"
 
-// Transform API response to component format
-function mapApiCardToStudyCard(card: ApiStudyCard) {
-    const baseCard = {
-        id: card.id,
-        source: card.source_title || (card.deck_titles && card.deck_titles[0]) || "Unknown Deck",
-        sourceUrl: undefined,
-    }
-
-    if (card.type === "note" || card.type === "reading_note") {
-        return {
-            ...baseCard,
-            // Map "reading_note" to "reading_note", otherwise "note"
-            type: (card.type === "reading_note" ? "reading_note" : "note") as "reading_note" | "note",
-            // For reading_note: title is question(headline), content is answer(body)
-            // For note: content is question(text), title is undefined
-            title: card.type === "reading_note" ? card.question : undefined,
-            content: (card.type === "reading_note" && card.answer) ? card.answer : card.question,
-            batch_id: card.batch_id,
-            batch_index: card.batch_index,
-            batch_total: card.batch_total,
-            images: card.images,
-        }
-    } else if (card.type === "flashcard" || card.type === "qa") {
-        return {
-            ...baseCard,
-            type: "flashcard" as const,
-            content: card.question,
-            answer: card.answer || "",
-        }
-    } else {
-        // Quiz types: mcq, cloze, true_false
-        const isCloze = card.type === "cloze"
-        return {
-            ...baseCard,
-            type: "quiz" as const,
-            content: card.question,
-            quizType: isCloze ? "cloze" as const : "mcq" as const,
-            options: card.options?.map((opt, i) => ({
-                id: String.fromCharCode(97 + i),
-                text: opt,
-                isCorrect: opt === card.answer,
-            })),
-            correctAnswer: isCloze ? card.answer : undefined,
-            explanation: card.explanation,
-        }
-    }
-}
-
 export default function StudyPage() {
-    const searchParams = useSearchParams()
-    const deckId = searchParams.get("deck")
-    const [cards, setCards] = useState<ReturnType<typeof mapApiCardToStudyCard>[]>([])
+    const [papers, setPapers] = useState<PaperStudyGroup[]>([])
     const [loading, setLoading] = useState(true)
-    const [deckTitle, setDeckTitle] = useState("Study Queue")
+    const [error, setError] = useState<string | null>(null)
+    const [selectedPaper, setSelectedPaper] = useState<PaperStudyGroup | null>(null)
 
-    useEffect(() => {
-        fetchStudyQueue()
-    }, [deckId])
-
-    const fetchStudyQueue = async () => {
+    const fetchPapers = useCallback(async () => {
         try {
             setLoading(true)
-            const apiCards = await getStudyQueue(20, deckId || undefined)
-            const mappedCards = apiCards.map(mapApiCardToStudyCard)
-            setCards(mappedCards)
-            if (apiCards.length > 0) {
-                setDeckTitle(apiCards[0].deck_titles[0] || "Learning Session")
-            }
-        } catch (error) {
-            console.error("Failed to fetch study queue:", error)
+            setError(null)
+            const data = await getStudyPapers()
+            setPapers(data)
+        } catch (e) {
+            console.error("Failed to fetch study papers:", e)
+            setError("Failed to load papers. Please try again.")
         } finally {
             setLoading(false)
         }
-    }
+    }, [])
 
+    useEffect(() => {
+        fetchPapers()
+    }, [fetchPapers])
+
+    const handleOpenPaper = useCallback((paper: PaperStudyGroup) => {
+        setSelectedPaper(paper)
+    }, [])
+
+    const handleBackToShelf = useCallback(() => {
+        setSelectedPaper(null)
+        // Refresh data when returning to shelf
+        fetchPapers()
+    }, [fetchPapers])
+
+    const handlePaperComplete = useCallback(() => {
+        // Find next paper
+        if (!selectedPaper) return
+        const currentIdx = papers.findIndex(p => p.source_id === selectedPaper.source_id)
+        const nextPaper = papers[currentIdx + 1]
+        if (nextPaper) {
+            setSelectedPaper(nextPaper)
+        } else {
+            setSelectedPaper(null)
+            fetchPapers()
+        }
+    }, [selectedPaper, papers, fetchPapers])
+
+    // Loading state
     if (loading) {
         return (
-            <div className="h-full flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="flex items-center justify-center h-full min-h-[60vh]">
+                <div className="flex flex-col items-center gap-4 animate-pulse">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <p className="text-muted-foreground">Loading your papers...</p>
+                </div>
             </div>
         )
     }
 
-    if (cards.length === 0) {
+    // Error state
+    if (error) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-center p-8">
-                <div className="text-6xl mb-4">🎉</div>
-                <h2 className="text-2xl font-bold mb-2">All caught up!</h2>
-                <p className="text-muted-foreground">
-                    No cards due for review right now. Check back later!
-                </p>
+            <div className="flex items-center justify-center h-full min-h-[60vh]">
+                <div className="text-center">
+                    <p className="text-destructive mb-4">{error}</p>
+                    <button
+                        onClick={fetchPapers}
+                        className="text-primary hover:underline"
+                    >
+                        Retry
+                    </button>
+                </div>
             </div>
         )
     }
 
+    // Reader view (a paper is selected)
+    if (selectedPaper) {
+        return (
+            <div className="max-w-4xl mx-auto px-6 py-6">
+                <PaperCardReader
+                    paper={selectedPaper}
+                    onBack={handleBackToShelf}
+                    onComplete={handlePaperComplete}
+                />
+            </div>
+        )
+    }
+
+    // Bookshelf view (default)
     return (
-        <div className="h-full">
-            <StudyContainer
-                cards={cards}
-                deckTitle={deckTitle}
-                onComplete={() => console.log("Study session complete!")}
+        <div className="max-w-7xl mx-auto px-6 py-8">
+            <PaperBookShelf
+                papers={papers}
+                onOpenPaper={handleOpenPaper}
             />
         </div>
     )
 }
-
-

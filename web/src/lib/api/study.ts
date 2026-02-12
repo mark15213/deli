@@ -90,3 +90,25 @@ export async function skipBatch(batchId: string): Promise<SkipBatchResponse> {
 
     return res.json();
 }
+
+// --- Paper-grouped study ---
+
+export interface PaperStudyGroup {
+    source_id: string;
+    source_title: string;
+    source_url?: string;
+    source_type?: string;
+    summary?: string;
+    card_count: number;
+    cards: StudyCard[];
+}
+
+export async function getStudyPapers(): Promise<PaperStudyGroup[]> {
+    const res = await fetchClient(`/study/papers`);
+
+    if (!res.ok) {
+        throw new Error("Failed to fetch study papers");
+    }
+
+    return res.json();
+}

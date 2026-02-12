@@ -53,6 +53,17 @@ class StudyCard(BaseModel):
         from_attributes = True
 
 
+class PaperStudyGroup(BaseModel):
+    """A group of study cards from the same paper/source."""
+    source_id: UUID
+    source_title: str
+    source_url: Optional[str] = None
+    source_type: Optional[str] = None
+    summary: Optional[str] = None  # TL;DR from rich_data
+    card_count: int
+    cards: List[StudyCard] = []
+
+
 class ReviewSubmit(BaseModel):
     rating: Rating
 
@@ -273,6 +284,142 @@ async def get_study_queue(
         )
         for card in due_cards
     ]
+
+
+@router.get("/papers", response_model=List[PaperStudyGroup])
+async def get_study_papers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get study queue grouped by paper/source, each with TL;DR summary."""
+    now = datetime.now(timezone.utc)
+    
+    # Get subscribed deck IDs
+    sub_stmt = select(DeckSubscription.deck_id).where(
+        DeckSubscription.user_id == current_user.id
+    )
+    sub_result = await db.execute(sub_stmt)
+    subscribed_deck_ids = [row[0] for row in sub_result.fetchall()]
+    
+    if not subscribed_deck_ids:
+        return []
+    
+    # Get all active/pending cards from subscribed decks with source info
+    cards_stmt = (
+        select(Card)
+        .join(Card.decks)
+        .where(
+            Deck.id.in_(subscribed_deck_ids),
+            Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
+            Card.source_material_id.isnot(None),  # Must have a source
+        )
+        .options(
+            selectinload(Card.decks),
+            selectinload(Card.source_material).selectinload(SourceMaterial.source)
+        )
+        .order_by(Card.created_at.desc())
+        .limit(200)
+    )
+    cards_result = await db.execute(cards_stmt)
+    raw_cards = list({c.id: c for c in cards_result.scalars().all()}.values())
+    
+    # Get study progress to filter to due cards
+    card_ids = [c.id for c in raw_cards]
+    progress_map = {}
+    if card_ids:
+        progress_stmt = select(StudyProgress).where(
+            StudyProgress.user_id == current_user.id,
+            StudyProgress.card_id.in_(card_ids),
+        )
+        progress_result = await db.execute(progress_stmt)
+        progress_map = {p.card_id: p for p in progress_result.scalars().all()}
+    
+    # Filter to due cards
+    due_cards = []
+    for card in raw_cards:
+        progress = progress_map.get(card.id)
+        if progress is None or progress.due_date <= now:
+            due_cards.append(card)
+    
+    # Calculate batch totals
+    batch_totals = {}
+    batch_ids_to_query = set(c.batch_id for c in due_cards if c.batch_id)
+    if batch_ids_to_query:
+        batch_count_stmt = (
+            select(Card.batch_id, func.count(Card.id))
+            .where(Card.batch_id.in_(batch_ids_to_query))
+            .group_by(Card.batch_id)
+        )
+        batch_result = await db.execute(batch_count_stmt)
+        batch_totals = {row[0]: row[1] for row in batch_result.fetchall()}
+    
+    # Group by source
+    from collections import defaultdict
+    source_groups: dict[str, dict] = {}
+    
+    for card in due_cards:
+        sm = card.source_material
+        if not sm or not sm.source:
+            continue
+        
+        source_id = str(sm.source.id)
+        if source_id not in source_groups:
+            # Extract summary from rich_data
+            summary = None
+            if sm.rich_data and isinstance(sm.rich_data, dict):
+                summary = sm.rich_data.get("summary")
+            
+            source_groups[source_id] = {
+                "source_id": sm.source.id,
+                "source_title": sm.source.name,
+                "source_url": (sm.source.connection_config or {}).get("url"),
+                "source_type": sm.source.type,
+                "summary": summary,
+                "cards": [],
+            }
+        
+        source_groups[source_id]["cards"].append(
+            StudyCard(
+                id=card.id,
+                type=card.type,
+                question=card.content.get("question", "") if card.content else "",
+                answer=card.content.get("answer") if card.content else None,
+                options=card.content.get("options") if card.content else None,
+                explanation=card.content.get("explanation") if card.content else None,
+                images=card.content.get("images") if card.content else None,
+                tags=card.tags or [],
+                source_title=sm.source.name,
+                deck_ids=[d.id for d in card.decks],
+                deck_titles=[d.title for d in card.decks],
+                batch_id=card.batch_id,
+                batch_index=card.batch_index,
+                batch_total=batch_totals.get(card.batch_id) if card.batch_id else None,
+            )
+        )
+    
+    # Sort cards within each group: reading notes first, then by batch_index
+    result = []
+    for group_data in source_groups.values():
+        cards = group_data["cards"]
+        cards.sort(key=lambda c: (
+            0 if c.type == "reading_note" else 1,
+            str(c.batch_id) if c.batch_id else '',
+            c.batch_index if c.batch_index is not None else 0,
+        ))
+        result.append(PaperStudyGroup(
+            source_id=group_data["source_id"],
+            source_title=group_data["source_title"],
+            source_url=group_data["source_url"],
+            source_type=group_data["source_type"],
+            summary=group_data["summary"],
+            card_count=len(cards),
+            cards=cards,
+        ))
+    
+    # Sort groups: most cards first
+    result.sort(key=lambda g: g.card_count, reverse=True)
+    
+    return result
 
 
 @router.post("/{card_id}/review", response_model=ReviewResponse)

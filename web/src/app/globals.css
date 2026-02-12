@@ -54,3 +54,95 @@ body {
   background: var(--background);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
+
+/* ===== Book Shelf & Cover Styles ===== */
+
+.bookshelf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2rem;
+}
+
+@media (min-width: 768px) {
+  .bookshelf-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+
+.bookshelf-shadow {
+  height: 6px;
+  background: linear-gradient(to bottom, hsl(var(--border)), transparent);
+  border-radius: 0 0 8px 8px;
+  margin-top: -0.5rem;
+}
+
+/* Book Container */
+.book-container {
+  perspective: 800px;
+}
+
+.book {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.book-container:hover .book {
+  transform: rotateY(-12deg) translateX(4px);
+}
+
+/* Book Cover */
+.book-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4.2;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow:
+    4px 4px 12px rgba(0, 0, 0, 0.15),
+    1px 1px 3px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.3s ease;
+}
+
+.book-container:hover .book-cover {
+  box-shadow:
+    8px 8px 20px rgba(0, 0, 0, 0.25),
+    2px 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Book Pages (Side Effect) */
+.book-pages {
+  position: absolute;
+  top: 3px;
+  right: -6px;
+  bottom: 3px;
+  width: 6px;
+  background: linear-gradient(to right,
+      hsl(var(--muted)) 0%,
+      hsl(var(--border)) 30%,
+      hsl(var(--muted)) 60%,
+      hsl(var(--border)) 100%);
+  border-radius: 0 2px 2px 0;
+  transform: rotateY(20deg);
+  transform-origin: left center;
+}
+
+/* ===== Card Reader Styles ===== */
+
+.reader-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reader-topbar {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid hsl(var(--border));
+  margin-bottom: 0.5rem;
+}
+
+.reader-card-area {
+  min-height: 300px;
+}
