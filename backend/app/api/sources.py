@@ -349,20 +349,20 @@ async def sync_source_internal(db: AsyncSession, source: Source) -> dict:
             )
             existing_result = await db.execute(existing_stmt)
             if existing_result.scalar_one_or_none():
-                logger.info(f"Skipping existing material: {item.external_id}")
-                continue
-            
-            # Create source material
-            material = SourceMaterial(
-                user_id=source.user_id,
-                source_id=source.id,
-                external_id=item.external_id,
-                external_url=item.url,
-                title=item.title,
-                rich_data=item.metadata or {},
-            )
-            db.add(material)
-            created_count += 1
+                logger.info(f"Skipping existing material creation: {item.external_id}")
+                # Do NOT continue here - we still need to check if the child source (paper) exists
+            else:
+                # Create source material
+                material = SourceMaterial(
+                    user_id=source.user_id,
+                    source_id=source.id,
+                    external_id=item.external_id,
+                    external_url=item.url,
+                    title=item.title,
+                    rich_data=item.metadata or {},
+                )
+                db.add(material)
+                created_count += 1
             
             # For HF papers, create an individual ARXIV_PAPER source and trigger processing
             if source.type == "HF_DAILY_PAPERS" and item.metadata and item.metadata.get("arxiv_id"):
