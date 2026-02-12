@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { PaperBookShelf } from "@/components/study/PaperBookShelf"
 import { PaperCardReader } from "@/components/study/PaperCardReader"
 import { getStudyPapers, type PaperStudyGroup } from "@/lib/api/study"
-import { Loader2 } from "lucide-react"
+import { Loader2, Zap } from "lucide-react"
 
 export default function StudyPage() {
+    const router = useRouter()
     const [papers, setPapers] = useState<PaperStudyGroup[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -98,6 +100,29 @@ export default function StudyPage() {
     // Bookshelf view (default)
     return (
         <div className="max-w-7xl mx-auto px-6 py-8">
+            {/* Start Gulping CTA */}
+            <div className="mb-8">
+                <button
+                    onClick={() => router.push("/gulp")}
+                    className="group w-full p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-amber-500/10 border border-primary/20 hover:border-primary/40 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                                <Zap className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm">Start Gulping</h3>
+                                <p className="text-xs text-muted-foreground">TikTok-style immersive learning</p>
+                            </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                            →
+                        </span>
+                    </div>
+                </button>
+            </div>
+
             <PaperBookShelf
                 papers={papers}
                 onOpenPaper={handleOpenPaper}

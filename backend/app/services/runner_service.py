@@ -213,7 +213,7 @@ class RunnerService:
 
             # Determine Model
             settings = get_settings()
-            env_model = settings.openai_model or "gemini-3-flash" # config now defaults to gemini
+            env_model = settings.gemini_model or "gemini-2.0-flash-exp"
             model_name = lens.parameters.get("model", env_model)
             
             # Config

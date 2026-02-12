@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # OpenAI / Gemini
     openai_api_key: str = ""
     gemini_api_key: str = "" # Native Gemini API Key
-    openai_model: str = "gemini-3-flash" # Default model name
+    gemini_model: str = "gemini-2.0-flash-exp" # Default model name (Flash for Local)
     openai_base_url: str | None = None
     
     # Security
