@@ -31,6 +31,30 @@ async def lifespan(app: FastAPI):
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     print("Database connection pool pre-warmed.")
+
+    # Recover stuck tasks (PENDING snapshots)
+    try:
+        from app.models.models import Source
+        from app.background.paper_tasks import process_paper_background
+        from sqlalchemy import select
+        import asyncio
+        
+        async with async_session_maker() as db:
+            stmt = select(Source).where(
+                Source.status == "PENDING", 
+                Source.category == "SNAPSHOT"
+            )
+            result = await db.execute(stmt)
+            pending_sources = result.scalars().all()
+            
+            if pending_sources:
+                print(f"Found {len(pending_sources)} pending snapshot sources. Re-queueing...")
+                for source in pending_sources:
+                    print(f"Re-queueing source {source.id} ({source.name})")
+                    asyncio.create_task(process_paper_background(source.id))
+    except Exception as e:
+        print(f"Startup warning: Failed to recover stuck tasks: {e}")
+
     
     # Dev mode: seed test data
     if settings.dev_mode:
