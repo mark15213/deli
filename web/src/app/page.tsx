@@ -6,6 +6,7 @@ import Link from "next/link"
 import {
     BookOpen,
     Brain,
+    Coffee,
     Flame,
     Inbox,
     Layers,
@@ -198,10 +199,10 @@ export default function DashboardPage() {
                                 Here's your learning overview for today
                             </p>
                         </div>
-                        <Link href="/study">
+                        <Link href="/gulp">
                             <Button size="lg" className="gap-2 shadow-lg hover:shadow-xl transition-shadow">
-                                <Zap className="h-5 w-5" />
-                                Start Learning
+                                <Coffee className="h-5 w-5" />
+                                Start Gulping
                             </Button>
                         </Link>
                     </div>
@@ -251,11 +252,11 @@ export default function DashboardPage() {
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <QuickAction
-                                    icon={Brain}
-                                    title="Start Learning"
-                                    description={`${stats?.today_remaining || 0} cards due today`}
-                                    href="/study"
-                                    color="bg-blue-500/10 text-blue-500"
+                                    icon={Coffee}
+                                    title="Start Gulping"
+                                    description="Swipe through your feed"
+                                    href="/gulp"
+                                    color="bg-pink-500/10 text-pink-500"
                                 />
                                 <QuickAction
                                     icon={Inbox}
