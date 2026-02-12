@@ -5,8 +5,11 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
-    title: "Gulp",
+    title: "Deli",
     description: "Manage your knowledge quizzes",
+    icons: {
+        icon: "/favicon.png",
+    },
 };
 
 export default function RootLayout({
