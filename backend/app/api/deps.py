@@ -55,3 +55,27 @@ async def get_current_active_user(
     Can be extended to check for active status/roles.
     """
     return current_user
+
+
+def is_shared_mode() -> bool:
+    """Check if shared mode is enabled (beta: all users see same data)."""
+    from app.core.config import get_settings
+    return get_settings().shared_mode
+
+
+async def require_admin(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """
+    Require admin user for destructive operations in shared mode.
+    In non-shared mode, any authenticated user can manage their own data.
+    """
+    if is_shared_mode():
+        from app.core.config import get_settings
+        settings = get_settings()
+        if current_user.email != settings.admin_email:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admin can perform this operation in shared mode",
+            )
+    return current_user

@@ -9,7 +9,8 @@ from sqlalchemy import select, func, case
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api import deps
+from app.api.deps import get_current_user, is_shared_mode
 from app.models import User, Deck, Card, CardStatus, DeckSubscription, StudyProgress, FSRSState, card_decks, SourceMaterial
 
 from pydantic import BaseModel, Field
@@ -94,18 +95,25 @@ async def list_decks(
     # Main query
     stmt = (
         select(Deck)
-        .where(Deck.owner_id == current_user.id)
-        .options(selectinload(Deck.subscribers))
     )
+    if not is_shared_mode():
+        stmt = stmt.where(Deck.owner_id == current_user.id)
+    
+    stmt = stmt.options(selectinload(Deck.subscribers))
     
     result = await db.execute(stmt)
     decks = result.scalars().all()
     
     # ... (subscriptions logic same) ...
     # Get subscribed deck IDs
-    sub_stmt = select(DeckSubscription.deck_id).where(
-        DeckSubscription.user_id == current_user.id
-    )
+    # Get subscribed deck IDs
+    sub_stmt = select(DeckSubscription.deck_id)
+    if not is_shared_mode():
+        sub_stmt = sub_stmt.where(DeckSubscription.user_id == current_user.id)
+    else:
+        # In shared mode, consider fetching all subscriptions or treating valid subs?
+        # For now, let's keep subscriptions per-user, so user can still see which ones they "subscribed" to.
+        sub_stmt = sub_stmt.where(DeckSubscription.user_id == current_user.id)
     sub_result = await db.execute(sub_stmt)
     subscribed_ids = set(row[0] for row in sub_result.fetchall())
     
@@ -200,8 +208,10 @@ async def get_deck(
         raise HTTPException(status_code=404, detail="Deck not found")
     
     # Check access
-    if deck.owner_id != current_user.id and not deck.is_public:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Check access
+    if not is_shared_mode():
+        if deck.owner_id != current_user.id and not deck.is_public:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     # Check subscription
     sub_stmt = select(DeckSubscription).where(
@@ -248,7 +258,9 @@ async def update_deck(
     current_user: User = Depends(get_current_user),
 ):
     """Update a deck."""
-    stmt = select(Deck).where(Deck.id == deck_id, Deck.owner_id == current_user.id)
+    stmt = select(Deck).where(Deck.id == deck_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Deck.owner_id == current_user.id)
     result = await db.execute(stmt)
     deck = result.scalar_one_or_none()
     
@@ -279,11 +291,14 @@ async def update_deck(
 @router.delete("/{deck_id}")
 async def delete_deck(
     deck_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+    _admin: User = Depends(deps.require_admin),
 ):
     """Delete a deck."""
-    stmt = select(Deck).where(Deck.id == deck_id, Deck.owner_id == current_user.id)
+    stmt = select(Deck).where(Deck.id == deck_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Deck.owner_id == current_user.id)
     result = await db.execute(stmt)
     deck = result.scalar_one_or_none()
     

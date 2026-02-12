@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     debug: bool = False
     db_echo: bool = False # Enable SQL echo (independent of debug mode)
     dev_mode: bool = False  # Enable mock auth and seed data in development
+    shared_mode: bool = True  # Beta: all users share the same data (reads skip user filter)
+    admin_email: str = "mark@gmail.com"  # Admin user for destructive operations in shared mode
     
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/deli"

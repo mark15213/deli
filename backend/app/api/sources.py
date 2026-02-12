@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api import deps
+from app.api.deps import is_shared_mode
 from app.models.models import User, Source
 from app.schemas.source_schemas import SourceCreate, SourceUpdate, SourceResponse
 from app.schemas.detect_schemas import DetectRequest, DetectResponse
@@ -33,8 +34,11 @@ async def get_sources(
     stmt = (
         select(Source)
         .options(selectinload(Source.source_materials))
-        .where(Source.user_id == current_user.id, Source.parent_source_id == None)
-        .offset(skip).limit(limit)
+        .where(Source.parent_source_id == None)
+    )
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
+    stmt = stmt.offset(skip).limit(limit
     )
     result = await db.execute(stmt)
     sources = result.scalars().all()
@@ -160,7 +164,9 @@ async def get_source(
     """
     Get source by ID.
     """
-    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id, Source.user_id == current_user.id)
+    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
     source = result.scalar_one_or_none()
     if not source:
@@ -179,7 +185,9 @@ async def get_child_sources(
     Get child sources for a subscription source.
     """
     # Verify parent source exists and belongs to user
-    parent_stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    parent_stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        parent_stmt = parent_stmt.where(Source.user_id == current_user.id)
     parent_result = await db.execute(parent_stmt)
     parent = parent_result.scalar_one_or_none()
     if not parent:
@@ -207,7 +215,9 @@ async def update_source(
     """
     Update source.
     """
-    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id, Source.user_id == current_user.id)
+    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
     source = result.scalar_one_or_none()
     if not source:
@@ -240,11 +250,14 @@ async def delete_source(
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
     current_user: User = Depends(deps.get_current_user),
+    _admin: User = Depends(deps.require_admin),
 ) -> Any:
     """
     Delete source.
     """
-    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
     source = result.scalar_one_or_none()
     if not source:
@@ -275,7 +288,9 @@ async def sync_source(
     Fetches new items and creates source materials.
     """
     # Get source
-    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
     source = result.scalar_one_or_none()
     
@@ -416,7 +431,9 @@ async def upload_document(
     Cards are created with PENDING status for user review.
     """
     # Verify source exists and belongs to user
-    stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
     source = result.scalar_one_or_none()
     if not source:
@@ -511,7 +528,9 @@ async def get_source_logs(
     Get processing logs for a source.
     """
     # Verify source exists and belongs to user
-    source_stmt = select(Source).where(Source.id == source_id, Source.user_id == current_user.id)
+    source_stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        source_stmt = source_stmt.where(Source.user_id == current_user.id)
     source_result = await db.execute(source_stmt)
     source = source_result.scalar_one_or_none()
     if not source:

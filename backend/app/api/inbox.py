@@ -10,7 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.schemas import InboxItem
-from app.api.deps import get_current_user
+from app.api import deps
+from app.api.deps import get_current_user, is_shared_mode
 from app.models import User, Card, CardStatus, Deck, SourceMaterial
 
 from pydantic import BaseModel
@@ -63,12 +64,15 @@ async def get_pending_items(
     stmt = (
         select(Card)
         .where(
-            Card.owner_id == current_user.id,
             Card.status == CardStatus.PENDING
         )
-        .offset(skip)
-        .limit(limit)
     )
+
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+    
+    stmt = stmt.offset(skip).limit(limit)
+
     
     result = await db.execute(stmt)
     cards = result.scalars().all()
@@ -87,14 +91,15 @@ async def get_pending_by_source(
     stmt = (
         select(Card)
         .outerjoin(Card.source_material)
-        .where(Card.owner_id == current_user.id)
-        .options(
+    )
+
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+
+    stmt = stmt.options(
             selectinload(Card.source_material),
             selectinload(Card.decks)
-        )
-        .order_by(Card.created_at.desc())
-    )
-    
+        ).order_by(Card.created_at.desc())
     # Apply status filter if provided
     if status:
         status_map = {
@@ -165,10 +170,13 @@ async def bulk_approve(
         select(Card)
         .where(
             Card.id.in_(request.card_ids),
-            Card.owner_id == current_user.id,
             Card.status == CardStatus.PENDING
         )
-    )
+    )    
+
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+
     result = await db.execute(stmt)
     cards = result.scalars().all()
     
@@ -197,10 +205,13 @@ async def bulk_reject(
         select(Card)
         .where(
             Card.id.in_(request.card_ids),
-            Card.owner_id == current_user.id,
             Card.status == CardStatus.PENDING
         )
-    )
+    )    
+
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+
     result = await db.execute(stmt)
     cards = result.scalars().all()
     
@@ -221,17 +232,19 @@ async def bulk_reject(
 @router.post("/bulk/delete")
 async def bulk_delete(
     request: BulkActionRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+    _admin: User = Depends(deps.require_admin),
 ):
     """Permanently delete multiple cards at once."""
     stmt = (
         select(Card)
         .where(
             Card.id.in_(request.card_ids),
-            Card.owner_id == current_user.id,
         )
     )
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
     result = await db.execute(stmt)
     cards = result.scalars().all()
     
@@ -258,7 +271,9 @@ async def approve_item(
     current_user: User = Depends(get_current_user),
 ):
     """Approve an inbox item."""
-    stmt = select(Card).where(Card.id == card_id, Card.owner_id == current_user.id)
+    stmt = select(Card).where(Card.id == card_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
     result = await db.execute(stmt)
     card = result.scalar_one_or_none()
     
@@ -278,7 +293,9 @@ async def reject_item(
     current_user: User = Depends(get_current_user),
 ):
     """Reject an inbox item."""
-    stmt = select(Card).where(Card.id == card_id, Card.owner_id == current_user.id)
+    stmt = select(Card).where(Card.id == card_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
     result = await db.execute(stmt)
     card = result.scalar_one_or_none()
     
@@ -294,11 +311,14 @@ async def reject_item(
 @router.delete("/{card_id}")
 async def delete_card(
     card_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+    _admin: User = Depends(deps.require_admin),
 ):
     """Permanently delete a card."""
-    stmt = select(Card).where(Card.id == card_id, Card.owner_id == current_user.id)
+    stmt = select(Card).where(Card.id == card_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
     result = await db.execute(stmt)
     card = result.scalar_one_or_none()
     
@@ -322,16 +342,21 @@ async def add_card_to_deck(
     # Verify card
     card_stmt = (
         select(Card)
-        .where(Card.id == card_id, Card.owner_id == current_user.id)
+        .where(Card.id == card_id)
         .options(selectinload(Card.decks))
     )
+    if not is_shared_mode():
+        card_stmt = card_stmt.where(Card.owner_id == current_user.id)
+        
     card = (await db.execute(card_stmt)).scalar_one_or_none()
     
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     
     # Verify deck
-    deck_stmt = select(Deck).where(Deck.id == deck_id, Deck.owner_id == current_user.id)
+    deck_stmt = select(Deck).where(Deck.id == deck_id)
+    if not is_shared_mode():
+        deck_stmt = deck_stmt.where(Deck.owner_id == current_user.id)
     target_deck = (await db.execute(deck_stmt)).scalar_one_or_none()
     
     if not target_deck:
@@ -365,9 +390,12 @@ async def remove_card_from_deck(
     # Verify card
     card_stmt = (
         select(Card)
-        .where(Card.id == card_id, Card.owner_id == current_user.id)
-        .options(selectinload(Card.decks))
+        .where(Card.id == card_id)
     )
+    if not is_shared_mode():
+        card_stmt = card_stmt.where(Card.owner_id == current_user.id)
+        
+    card_stmt = card_stmt.options(selectinload(Card.decks))
     card = (await db.execute(card_stmt)).scalar_one_or_none()
     
     if not card:
