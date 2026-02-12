@@ -54,6 +54,10 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
+# Middleware
+from app.middleware.timing import ProcessTimeMiddleware
+app.add_middleware(ProcessTimeMiddleware)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
