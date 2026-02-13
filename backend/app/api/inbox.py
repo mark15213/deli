@@ -48,6 +48,11 @@ class BulkActionRequest(BaseModel):
     card_ids: List[UUID]
 
 
+class BulkDeckActionRequest(BaseModel):
+    card_ids: List[UUID]
+    deck_id: UUID
+
+
 # --- Router ---
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
@@ -200,6 +205,148 @@ async def bulk_reject(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Reject multiple cards at once."""
+    stmt = (
+        select(Card)
+        .where(
+            Card.id.in_(request.card_ids),
+            Card.status == CardStatus.PENDING
+        )
+    )
+
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+
+    result = await db.execute(stmt)
+    cards = result.scalars().all()
+    
+    rejected_ids = []
+    for card in cards:
+        card.status = CardStatus.REJECTED
+        rejected_ids.append(str(card.id))
+    
+    await db.commit()
+    
+    return {
+        "status": "rejected",
+        "count": len(rejected_ids),
+        "card_ids": rejected_ids,
+    }
+
+
+@router.post("/bulk/delete")
+async def bulk_delete(
+    request: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete multiple cards."""
+    stmt = (
+        select(Card)
+        .where(Card.id.in_(request.card_ids))
+    )
+
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+
+    result = await db.execute(stmt)
+    cards = result.scalars().all()
+    
+    deleted_ids = []
+    for card in cards:
+        deleted_ids.append(str(card.id))
+        await db.delete(card)
+    
+    await db.commit()
+    
+    return {
+        "status": "deleted",
+        "count": len(deleted_ids),
+        "card_ids": deleted_ids,
+    }
+
+
+@router.post("/bulk/add-to-deck")
+async def bulk_add_to_deck(
+    request: BulkDeckActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add multiple cards to a deck."""
+    # Verify deck
+    deck_stmt = select(Deck).where(Deck.id == request.deck_id)
+    if not is_shared_mode():
+        deck_stmt = deck_stmt.where(Deck.owner_id == current_user.id)
+    target_deck = (await db.execute(deck_stmt)).scalar_one_or_none()
+    
+    if not target_deck:
+        raise HTTPException(status_code=404, detail="Target deck not found")
+        
+    # Get cards
+    stmt = (
+        select(Card)
+        .where(Card.id.in_(request.card_ids))
+        .options(selectinload(Card.decks))
+    )
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+        
+    result = await db.execute(stmt)
+    cards = result.scalars().all()
+    
+    modified_count = 0
+    for card in cards:
+        # Add if not present
+        if target_deck not in card.decks:
+            card.decks.append(target_deck)
+            modified_count += 1
+            
+        # Implicit approval
+        if card.status == CardStatus.PENDING:
+            card.status = CardStatus.ACTIVE
+            
+    await db.commit()
+    
+    return {
+        "status": "added",
+        "count": modified_count,
+        "deck_id": str(request.deck_id)
+    }
+
+
+@router.post("/bulk/remove-from-deck")
+async def bulk_remove_from_deck(
+    request: BulkDeckActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove multiple cards from a deck."""
+    # Get cards
+    stmt = (
+        select(Card)
+        .where(Card.id.in_(request.card_ids))
+        .options(selectinload(Card.decks))
+    )
+    if not is_shared_mode():
+        stmt = stmt.where(Card.owner_id == current_user.id)
+        
+    result = await db.execute(stmt)
+    cards = result.scalars().all()
+    
+    modified_count = 0
+    for card in cards:
+        deck_to_remove = next((d for d in card.decks if d.id == request.deck_id), None)
+        if deck_to_remove:
+            card.decks.remove(deck_to_remove)
+            modified_count += 1
+            
+    await db.commit()
+    
+    return {
+        "status": "removed",
+        "count": modified_count,
+        "deck_id": str(request.deck_id)
+    }
     """Reject multiple cards at once."""
     stmt = (
         select(Card)

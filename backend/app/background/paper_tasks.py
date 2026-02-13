@@ -25,6 +25,25 @@ async def process_paper_background(source_id: UUID):
         except Exception as e:
             logger.error(f"[BACKGROUND] Error processing source {source_id}: {str(e)}")
             logger.error(f"[BACKGROUND] Traceback: {traceback.format_exc()}")
+            
+            # Write failure log to DB so frontend stops polling
+            try:
+                # Create a NEW session for logging to ensure it doesn't conflict with any previous session state
+                async with async_session_maker() as log_session:
+                    from app.models.models import SourceLog
+                    error_log = SourceLog(
+                        source_id=source_id,
+                        event_type="error",
+                        status="failed",
+                        message=f"Background processing failed: {str(e)}",
+                        extra_data={"traceback": traceback.format_exc()}
+                    )
+                    log_session.add(error_log)
+                    await log_session.commit()
+            except Exception as log_err:
+                 # Last resort logging
+                 logger.error(f"[BACKGROUND] Failed to write error log to DB: {log_err}")
+
             # Don't re-raise - background tasks should not crash the app
 
 

@@ -140,3 +140,25 @@ export async function bulkDelete(cardIds: string[]): Promise<void> {
         throw new Error("Failed to bulk delete");
     }
 }
+
+export async function bulkAddCardToDeck(cardIds: string[], deckId: string): Promise<void> {
+    const res = await fetchClient(`/inbox/bulk/add-to-deck`, {
+        method: "POST",
+        body: JSON.stringify({ card_ids: cardIds, deck_id: deckId }),
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to bulk add to deck");
+    }
+}
+
+export async function bulkRemoveCardFromDeck(cardIds: string[], deckId: string): Promise<void> {
+    const res = await fetchClient(`/inbox/bulk/remove-from-deck`, {
+        method: "POST",
+        body: JSON.stringify({ card_ids: cardIds, deck_id: deckId }),
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to bulk remove from deck");
+    }
+}
