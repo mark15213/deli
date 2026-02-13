@@ -4,7 +4,7 @@ import { InboxItem } from "@/components/inbox/InboxItem"
 import { SourceCompareDrawer } from "@/components/inbox/SourceCompareDrawer"
 import { ImportCardsModal } from "@/components/inbox/ImportCardsModal"
 import { useState, useEffect, useCallback } from "react"
-import { getPendingBySource, addCardToDeck, removeCardFromDeck, bulkDelete, type InboxSourceGroup } from "@/lib/api/inbox"
+import { getPendingBySource, addCardToDeck, removeCardFromDeck, bulkDelete, bulkAddCardToDeck, bulkRemoveCardFromDeck, type InboxSourceGroup } from "@/lib/api/inbox"
 import { getDecks, createDeck, type Deck } from "@/lib/api/decks"
 import { Loader2, X, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -145,23 +145,32 @@ export default function InboxPage() {
         const commonDecks = getCommonDeckIds(source)
         const isCurrentlyIn = commonDecks.includes(deckId)
 
-        // Apply logic to ALL cards (pending or active)
+        // Collect IDs for bulk action
+        const cardIds: string[] = []
         for (const card of source.cards) {
-            try {
-                if (isCurrentlyIn) {
-                    // Remove if present
-                    if (card.deck_ids.includes(deckId)) {
-                        await removeCardFromDeck(card.id, deckId)
-                    }
-                } else {
-                    // Add if missing
-                    if (!card.deck_ids.includes(deckId)) {
-                        await addCardToDeck(card.id, deckId)
-                    }
+            if (isCurrentlyIn) {
+                // To remove: check if present
+                if (card.deck_ids.includes(deckId)) {
+                    cardIds.push(card.id)
                 }
-            } catch (error) {
-                console.error(`Failed to toggle deck ${deckId} for card ${card.id}`, error)
+            } else {
+                // To add: check if missing
+                if (!card.deck_ids.includes(deckId)) {
+                    cardIds.push(card.id)
+                }
             }
+        }
+
+        if (cardIds.length === 0) return
+
+        try {
+            if (isCurrentlyIn) {
+                await bulkRemoveCardFromDeck(cardIds, deckId)
+            } else {
+                await bulkAddCardToDeck(cardIds, deckId)
+            }
+        } catch (error) {
+            console.error(`Failed to toggle deck ${deckId} for source ${sourceId}`, error)
         }
 
         // Refresh
