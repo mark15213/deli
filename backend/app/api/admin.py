@@ -48,10 +48,27 @@ async def reset_stuck_sources(
         db.add(log)
         reset_count += 1
         
+    # 3. Reset stuck SourceLogs (where status='running' and created > 5 mins ago)
+    # This fixes the "lens running" spinner in the UI
+    stmt_logs = select(SourceLog).where(
+        (SourceLog.status == "running") &
+        (SourceLog.created_at < cutoff_time)
+    )
+    result_logs = await db.execute(stmt_logs)
+    stuck_logs = result_logs.scalars().all()
+    
+    log_reset_count = 0
+    for log in stuck_logs:
+        log.status = "failed"
+        log.event_type = "lens_failed" # or error, assuming lens failure
+        log.message = f"Values reset by admin API: stuck in running state."
+        log_reset_count += 1
+
     await db.commit()
     
     return {
         "status": "success",
         "reset_count": reset_count,
-        "message": f"Reset {reset_count} stuck sources."
+        "log_reset_count": log_reset_count,
+        "message": f"Reset {reset_count} stuck sources and {log_reset_count} stuck task logs."
     }
