@@ -151,7 +151,7 @@ export default function SourcesPage() {
                                                     {/* Status & Actions */}
                                                     <div className="flex items-center gap-3">
                                                         <span className={`text-xs px-2 py-1 rounded-full ${source.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
-                                                            source.status === 'ERROR' ? 'bg-red-100 text-red-700' :
+                                                            source.status === 'FAILED' ? 'bg-red-100 text-red-700' :
                                                                 'bg-yellow-100 text-yellow-700'
                                                             }`}>
                                                             {source.status}
@@ -216,7 +216,7 @@ export default function SourcesPage() {
                                                 key={source.id}
                                                 name={source.name}
                                                 icon={config.icon}
-                                                status={source.status === 'ACTIVE' || source.status === 'COMPLETED' ? 'active' : source.status === 'ERROR' ? 'error' : 'syncing'}
+                                                status={source.status === 'ACTIVE' || source.status === 'COMPLETED' ? 'active' : source.status === 'FAILED' ? 'error' : 'syncing'}
                                                 lastSync={formatLastSync(source.last_synced_at)}
                                                 description={config.description}
                                                 onClick={() => setSelectedSource(source.id)}
