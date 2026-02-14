@@ -39,7 +39,6 @@ langchain>=0.1.0
 langchain-text-splitters>=0.0.1
 langchain-openai>=0.0.5
 openai>=1.10.0
-google-genai>=0.3.0
 instructor>=1.0.0
 
 # Notion SDK

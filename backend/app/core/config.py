@@ -30,9 +30,9 @@ class Settings(BaseSettings):
     notion_redirect_uri: str = "http://localhost:8000/api/v1/auth/notion/callback"
     
     # LLM (OpenAI-compatible endpoint)
-    llm_base_url: str = "http://127.0.0.1:8045/v1"
-    llm_model: str = "gemini-3-flash"
-    llm_api_key: str = "sk-9b02b6a6a9a74569908fbc50932b8b8a"
+    llm_base_url: str = ""
+    llm_model: str = ""
+    llm_api_key: str = ""
     
     # Security
     secret_key: str = "your-secret-key-change-in-production"
@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 @lru_cache
