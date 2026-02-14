@@ -350,9 +350,8 @@ class RunnerService:
                 logger.info(f"Found existing material used by another source, re-linking to source {source.id}")
                 source_material = existing_material
                 if source_material.source_id != source.id:
-                     # This might be tricky if one material is shared by multiple sources, 
-                     # but for now 1:1 or 1:N ownership transfer
-                     pass 
+                     source_material.source_id = source.id
+                     await self.db.flush()
             else:
                  source_material = SourceMaterial(
                     user_id=source.user_id,
