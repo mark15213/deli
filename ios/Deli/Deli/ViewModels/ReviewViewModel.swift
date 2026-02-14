@@ -2,83 +2,53 @@ import Foundation
 
 @Observable
 class ReviewViewModel {
-    var quizzes: [Quiz] = []
-    
-    init() {
-        // Load dummy data for prototype
-        loadDummyData()
-    }
-    
-    func loadDummyData() {
-        self.quizzes = [
-            Quiz(
-                id: UUID(),
-                type: .mcq,
-                question: "What is the primary function of Python's 'GIL'?",
-                options: [
-                    "Global Interpreter Lock",
-                    "General Instruction List",
-                    "Generic Interface Layer"
-                ],
-                answer: "Global Interpreter Lock",
-                explanation: "The GIL matches access to Python objects, preventing multiple threads from executing Python bytecodes at once.",
-                sourcePageTitle: "Python Concurrency",
-                tags: ["Python", "Concurrency"]
-            ),
-            Quiz(
-                id: UUID(),
-                type: .mcq,
-                question: "Which hook is used for side effects in React?",
-                options: [
-                    "useState",
-                    "useEffect",
-                    "useContext"
-                ],
-                answer: "useEffect",
-                explanation: "useEffect is designed to handle side effects like data fetching, subscriptions, etc.",
-                sourcePageTitle: "React Hooks",
-                tags: ["React", "Frontend"]
-            ),
-             Quiz(
-                id: UUID(),
-                type: .mcq,
-                question: "In SQL, which key uniquely identifies a record?",
-                options: [
-                    "Foreign Key",
-                    "Primary Key",
-                    "Unique Key"
-                ],
-                answer: "Primary Key",
-                explanation: "A Primary Key is a unique identifier for each record in a database table.",
-                sourcePageTitle: "Database Basics",
-                tags: ["SQL", "Database"]
-            ),
-            Quiz(
-                id: UUID(),
-                type: .trueFalse,
-                question: "Swift is a statically typed language.",
-                options: nil, // Options handled by trueFalseView
-                answer: "True",
-                explanation: "Swift performs type checks at compile time.",
-                sourcePageTitle: "Swift Basics",
-                tags: ["Swift"]
-            ),
-            Quiz(
-                id: UUID(),
-                type: .cloze,
-                question: "The capital of France is {{c1::Paris}}.",
-                options: nil,
-                answer: "Paris",
-                explanation: "Paris is the capital and most populous city of France.",
-                sourcePageTitle: "Geography",
-                tags: ["General"]
-            )
-        ]
-    }
-    
-    func removeTopCard() {
-        if !quizzes.isEmpty {
-            quizzes.removeFirst()
+    var cards: [StudyCard] = []
+    var isLoading = false
+    var error: String?
+    var stats: StudyStats?
+
+    private let api = APIClient.shared
+
+    func loadQueue() async {
+        isLoading = true
+        error = nil
+        do {
+            cards = try await api.studyQueue()
+        } catch let err as APIError {
+            error = err.errorDescription
+        } catch {
+            self.error = error.localizedDescription
         }
+        isLoading = false
+    }
+
+    func loadStats() async {
+        do {
+            stats = try await api.studyStats()
+        } catch {}
+    }
+
+    func submitReview(cardId: UUID, rating: Rating) async {
+        do {
+            _ = try await api.submitReview(cardId: cardId, rating: rating)
+            cards.removeAll { $0.id == cardId }
+            await loadStats()
+        } catch let err as APIError {
+            error = err.errorDescription
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func skipBatch(batchId: UUID) async {
+        do {
+            try await api.skipBatch(batchId: batchId)
+            cards.removeAll { $0.batchId == batchId }
+        } catch {}
+    }
+
+    func removeTopCard() {
+        guard !cards.isEmpty else { return }
+        cards.removeFirst()
     }
 }

@@ -3,36 +3,49 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var authVM = AuthViewModel()
     @State private var selectedTab = 0
-    
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            ReviewView()
-                .tabItem {
-                    Label("Review", systemImage: "rectangle.stack")
+        Group {
+            if authVM.isLoggedIn {
+                TabView(selection: $selectedTab) {
+                    ReviewTab()
+                        .tabItem {
+                            Label("Review", systemImage: "rectangle.stack")
+                        }
+                        .tag(0)
+
+                    GulpView()
+                        .tabItem {
+                            Label("Gulp", systemImage: "play.square.stack")
+                        }
+                        .tag(1)
+
+                    DashboardView()
+                        .tabItem {
+                            Label("Dashboard", systemImage: "chart.bar")
+                        }
+                        .tag(2)
+
+                    SettingsView(authVM: authVM)
+                        .tabItem {
+                            Label("Settings", systemImage: "gear")
+                        }
+                        .tag(3)
                 }
-                .tag(0)
-            
-            DashboardView()
-                .tabItem {
-                    Label("Dashboard", systemImage: "chart.bar")
-                }
-                .tag(1)
-            
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
-                .tag(2)
+            } else {
+                LoginView(authVM: authVM)
+            }
         }
     }
 }
 
-// MARK: - Placeholder Views
+// MARK: - Review Tab
 
-struct ReviewView: View {
+struct ReviewTab: View {
     @State private var viewModel = ReviewViewModel()
-    
+
     var body: some View {
         NavigationStack {
             CardStackView(viewModel: viewModel)
@@ -44,7 +57,12 @@ struct ReviewView: View {
     }
 }
 
+// MARK: - Dashboard
+
 struct DashboardView: View {
+    @State private var stats: StudyStats?
+    @State private var isLoading = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -52,57 +70,90 @@ struct DashboardView: View {
                     HStack {
                         Text("Reviewed")
                         Spacer()
-                        Text("0")
-                            .foregroundColor(.secondary)
+                        Text("\(stats?.todayReviewed ?? 0)")
+                            .foregroundStyle(.secondary)
                     }
                     HStack {
                         Text("Remaining")
                         Spacer()
-                        Text("0")
-                            .foregroundColor(.secondary)
+                        Text("\(stats?.todayRemaining ?? 0)")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Section("Stats") {
                     HStack {
-                        Text("🔥 Streak")
+                        Text("Streak")
                         Spacer()
-                        Text("0 days")
-                            .foregroundColor(.secondary)
+                        Text("\(stats?.streakDays ?? 0) days")
+                            .foregroundStyle(.secondary)
                     }
                     HStack {
-                        Text("📚 Total Mastered")
+                        Text("Total Mastered")
                         Spacer()
-                        Text("0")
-                            .foregroundColor(.secondary)
+                        Text("\(stats?.totalMastered ?? 0)")
+                            .foregroundStyle(.secondary)
+                    }
+                    if let total = stats?.totalCards {
+                        HStack {
+                            Text("Total Cards")
+                            Spacer()
+                            Text("\(total)")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
             .navigationTitle("Dashboard")
+            .overlay {
+                if isLoading { ProgressView() }
+            }
+            .task {
+                isLoading = true
+                do {
+                    stats = try await APIClient.shared.studyStats()
+                } catch {}
+                isLoading = false
+            }
         }
     }
 }
 
+// MARK: - Settings
+
 struct SettingsView: View {
+    @Bindable var authVM: AuthViewModel
+
     var body: some View {
         NavigationStack {
             List {
-                Section("Account") {
-                    Button("Connect to Notion") {
-                        // TODO: Trigger Notion OAuth
+                if let user = authVM.user {
+                    Section("Account") {
+                        HStack {
+                            Text("Email")
+                            Spacer()
+                            Text(user.email)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                
+
                 Section("Appearance") {
                     Toggle("Dark Mode", isOn: .constant(false))
                 }
-                
+
                 Section("About") {
                     HStack {
                         Text("Version")
                         Spacer()
                         Text("0.1.0")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
+                    Button("Sign Out", role: .destructive) {
+                        Task { await authVM.logout() }
                     }
                 }
             }

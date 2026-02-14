@@ -29,11 +29,10 @@ class Settings(BaseSettings):
     notion_client_secret: str = ""
     notion_redirect_uri: str = "http://localhost:8000/api/v1/auth/notion/callback"
     
-    # OpenAI / Gemini
-    openai_api_key: str = ""
-    gemini_api_key: str = "" # Native Gemini API Key
-    openai_model: str = "gemini-3-flash" # Default model name
-    openai_base_url: str | None = None
+    # LLM (OpenAI-compatible endpoint)
+    llm_base_url: str = "http://127.0.0.1:8045/v1"
+    llm_model: str = "gemini-3-flash"
+    llm_api_key: str = "sk-9b02b6a6a9a74569908fbc50932b8b8a"
     
     # Security
     secret_key: str = "your-secret-key-change-in-production"
