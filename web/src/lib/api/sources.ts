@@ -117,3 +117,15 @@ export async function getChildSources(parentId: string): Promise<Source[]> {
 
     return res.json();
 }
+
+export async function retrySource(id: string): Promise<Source> {
+    const res = await fetchClient(`/sources/${id}/retry`, {
+        method: "POST",
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to retry source");
+    }
+
+    return res.json();
+}

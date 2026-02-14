@@ -28,3 +28,5 @@ api_router.include_router(cards_router)
 from app.api.bookmarks import router as bookmarks_router
 api_router.include_router(bookmarks_router)
 
+from app.api.admin import router as admin_router
+api_router.include_router(admin_router)
