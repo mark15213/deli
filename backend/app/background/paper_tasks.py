@@ -30,7 +30,17 @@ async def process_paper_background(source_id: UUID):
             try:
                 # Create a NEW session for logging to ensure it doesn't conflict with any previous session state
                 async with async_session_maker() as log_session:
-                    from app.models.models import SourceLog
+                    from app.models.models import SourceLog, Source
+                    
+                    # Update Source status to FAILED
+                    from sqlalchemy import select
+                    stmt = select(Source).where(Source.id == source_id)
+                    res = await log_session.execute(stmt)
+                    source_obj = res.scalar_one_or_none()
+                    if source_obj:
+                        source_obj.status = "FAILED"
+                        source_obj.error_log = f"Background processing failed: {str(e)}"
+                    
                     error_log = SourceLog(
                         source_id=source_id,
                         event_type="error",
