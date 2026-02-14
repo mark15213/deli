@@ -287,6 +287,9 @@ class RunnerService:
         # Log start of processing (Sync Started)
         process_start_time = time.time()
         await self._log_event(source.id, "sync_started", "running", message="Starting source processing")
+        
+        # Update status to PROCESSING
+        source.status = "PROCESSING"
         await self.db.commit()
 
         # 2. Extract Content (Text or Base64)

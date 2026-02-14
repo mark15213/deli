@@ -16,23 +16,34 @@ async def reset_stuck_sources(
 ):
     """
     Reset sources stuck in 'PROCESSING' state to 'FAILED'.
+    Also resets 'PENDING' sources that have been stuck for > 5 minutes.
     Useful for cleaning up after a crash.
     """
-    stmt = select(Source).where(Source.status == "PROCESSING")
+    from datetime import datetime, timedelta, timezone
+
+    # 1. Reset PROCESSING sources (stuck in progress)
+    # 2. Reset PENDING sources created > 5 mins ago (stuck in queue)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    
+    stmt = select(Source).where(
+        (Source.status == "PROCESSING") |
+        ((Source.status == "PENDING") & (Source.created_at < cutoff_time))
+    )
     result = await db.execute(stmt)
     sources = result.scalars().all()
     
     reset_count = 0
     for s in sources:
+        original_status = s.status
         s.status = "FAILED"
-        s.error_log = "Reset by admin API: stuck in processing."
+        s.error_log = f"Reset by admin API: stuck in {original_status}."
         
         # Log event
         log = SourceLog(
             source_id=s.id,
             event_type="error",
             status="failed",
-            message="Manually reset from stuck state via Admin API."
+            message=f"Manually reset from stuck {original_status} state via Admin API."
         )
         db.add(log)
         reset_count += 1
