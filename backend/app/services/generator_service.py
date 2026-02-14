@@ -33,15 +33,13 @@ class GeneratorService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        # Initialize Google GenAI Client
-        # Priority: GEMINI_API_KEY -> OPENAI_API_KEY (fallback)
         settings = get_settings()
-        api_key = settings.gemini_api_key
-        if not api_key:
-            api_key = settings.openai_api_key # Fallback
-            
-        from google import genai
-        self.client = genai.Client(api_key=api_key)
+        from openai import AsyncOpenAI
+        self.client = AsyncOpenAI(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+        )
+        self.model = settings.llm_model
         
     async def generate_quizzes_from_chunk(self, text_chunk: str, source_metadata: dict) -> List[Card]:
         """
@@ -113,45 +111,37 @@ class GeneratorService:
 
     async def _call_llm(self, text: str) -> QuizList:
         """Invoke LLM to generate structured quiz data."""
-        from google.genai import types
-        
+
         prompt = f"""
         You are an expert tutor. Create 1-3 high-quality multiple-choice questions (MCQs) based on the following text.
-        
+
         Text content:
         "{text}"
-        
+
         Requirements:
         1. Questions should test understanding, not just recall.
         2. Provide 3-4 plausible options for each question.
         3. Clearly mark the correct answer.
         4. Provide a brief explanation for the answer.
         5. Tag the content with relevant keywords.
+
+        Respond with valid JSON matching this schema:
+        {{"quizzes": [{{"question": "...", "options": ["A", "B", "C", "D"], "answer": "...", "explanation": "...", "difficulty": "Easy|Medium|Hard", "tags": ["..."]}}]}}
         """
-        
-        settings = get_settings()
-        model_name = settings.openai_model or "gemini-3-flash"
-        
-        # Use Pydantic model for schema
+
         try:
-            response = await self.client.aio.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=QuizList,
-                    system_instruction="You are a helpful assistant that generates quizzes."
-                )
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that generates quizzes. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
             )
-            
-            # Parse response directly using Pydantic
-            # The SDK might return text that we need to parse, or if response_schema is set, it validates structure
-            # Typically response.parsed if using high level tooling, but standard generate_content returns text
-            # However, with response_schema, the text IS json.
-            import json
-            data = json.loads(response.text)
+
+            data = json.loads(response.choices[0].message.content)
             return QuizList(**data)
-            
+
         except Exception as e:
              logger.error(f"LLM Quiz Generation Failed: {e}")
              return QuizList(quizzes=[])

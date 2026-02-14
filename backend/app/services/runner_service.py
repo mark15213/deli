@@ -7,7 +7,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -23,19 +23,16 @@ logger = logging.getLogger(__name__)
 class RunnerService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        # Initialize Google GenAI Client
         settings = get_settings()
-        # Priority: GEMINI_API_KEY -> OPENAI_API_KEY (fallback)
-        api_key = settings.gemini_api_key
+        api_key = settings.llm_api_key
         if not api_key:
-            api_key = settings.openai_api_key
-            if api_key:
-                 logger.info("Using OPENAI_API_KEY as fallback for Gemini Client.")
-            else:
-                 logger.warning("No API key found (GEMINI_API_KEY or OPENAI_API_KEY).")
+             logger.warning("No API key found (LLM_API_KEY).")
 
-        from google import genai
-        self.client = genai.Client(api_key=api_key)
+        self.client = AsyncOpenAI(
+            base_url=settings.llm_base_url,
+            api_key=api_key,
+        )
+        self.model = settings.llm_model
 
     async def _log_event(
         self,
@@ -150,37 +147,25 @@ class RunnerService:
 
     async def run_lens(self, source_data: SourceData, lens: Lens) -> Artifact:
         """
-        Execute a single Lens against a Source using google-genai SDK.
+        Execute a single Lens against a Source using OpenAI-compatible API.
         """
         from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
-        from google.genai import types
-        from google.genai.errors import ServerError, ClientError
+        from openai import APIStatusError
 
-        # Define retry strategy
         @retry(
             wait=wait_exponential(multiplier=1, min=2, max=60),
             stop=stop_after_attempt(5),
-            retry=retry_if_exception_type(ServerError), # Retry on 5xx
+            retry=retry_if_exception_type(APIStatusError),
             before_sleep=before_sleep_log(logger, logging.WARNING)
         )
-        async def _make_api_call(model, contents, config):
-            return await self.client.aio.models.generate_content(
+        async def _make_api_call(model, messages, **kwargs):
+            return await self.client.chat.completions.create(
                 model=model,
-                contents=contents,
-                config=config
+                messages=messages,
+                **kwargs
             )
 
         try:
-            # Construct Contents
-            contents = []
-            
-            # System Prompt (Gemini supports system_instruction in config, but putting it in contents matches older patterns too. 
-            # However, SDK recommends config.system_instruction. Let's use config if possible, or prepended text.)
-            # For simplicity with the unified contents structure, let's strictly follow SDK 'system_instruction' config if we want, 
-            # OR just prepend it to the user message which is often more robust across models.
-            # Let's use the config.system_instruction approach for cleanliness.
-            system_instruction = lens.system_prompt
-            
             # User Prompt Construction
             prompt_text = lens.user_prompt_template
             if source_data.text:
@@ -192,71 +177,67 @@ class RunnerService:
                  if "{text}" in prompt_text:
                      prompt_text = prompt_text.replace("{text}", "this document")
 
-            # Content Parts
-            parts = []
-            parts.append(types.Part.from_text(text=prompt_text))
+            # Build user content (text + optional images)
+            user_content = []
+            user_content.append({"type": "text", "text": prompt_text})
 
             if source_data.base64_data and source_data.mime_type:
-                # Add image/pdf part
-                import base64
+                import base64 as b64_mod
                 clean_b64 = source_data.base64_data.replace("\n", "").replace("\r", "")
-                image_bytes = base64.b64decode(clean_b64)
-                parts.append(types.Part.from_bytes(data=image_bytes, mime_type=source_data.mime_type))
-            
-            # Add multimodal images (e.g. for figure association)
+                # For PDFs, extract text instead of sending as image
+                if source_data.mime_type == "application/pdf":
+                    # PDF can't be sent as image_url; include base64 text in prompt
+                    # The text should already be in source_data.text or prompt
+                    # If we have no text, try to decode and mention it
+                    logger.info("PDF base64 detected, relying on text content for OpenAI API")
+                else:
+                    data_url = f"data:{source_data.mime_type};base64,{clean_b64}"
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": data_url}
+                    })
+
             if source_data.images:
+                import base64 as b64_mod
                 logger.info(f"Adding {len(source_data.images)} images to multimodal request")
-                for i, img_bytes in enumerate(source_data.images):
-                    parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+                for img_bytes in source_data.images:
+                    img_b64 = b64_mod.b64encode(img_bytes).decode("utf-8")
+                    data_url = f"data:image/jpeg;base64,{img_b64}"
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": data_url}
+                    })
 
-            contents.append(types.Content(role="user", parts=parts))
+            messages = [
+                {"role": "system", "content": lens.system_prompt},
+                {"role": "user", "content": user_content},
+            ]
 
-            # Determine Model
-            settings = get_settings()
-            env_model = settings.openai_model or "gemini-3-flash" # config now defaults to gemini
-            model_name = lens.parameters.get("model", env_model)
-            
-            # Config
-            config = types.GenerateContentConfig(
-                temperature=lens.parameters.get("temperature", 0.7),
-                system_instruction=system_instruction,
-                http_options=types.HttpOptions(timeout=180000) # 180 seconds in ms
-            )
-            
-            # JSON Schema enforcement
+            model_name = lens.parameters.get("model", self.model)
+
+            kwargs = {
+                "temperature": lens.parameters.get("temperature", 0.7),
+                "timeout": 180,
+            }
             if lens.output_schema:
-                 # Check if schema is a Pydantic model or dict
-                 if isinstance(lens.output_schema, dict):
-                     # For raw dict schema, we might need to rely on prompt instruction + parser, 
-                     # OR use response_mime_type="application/json"
-                     config.response_mime_type = "application/json"
-                     if "response_schema" in lens.output_schema:
-                          config.response_schema = lens.output_schema["response_schema"]
-                 else:
-                     # If it's a Pydantic class (from instructor pattern before)
-                     # We can pass it if we convert it to schema, but usually lens.output_schema here is likely a dict or None from registry
-                     config.response_mime_type = "application/json"
+                kwargs["response_format"] = {"type": "json_object"}
 
-            # DEBUG: Log
             logger.info(f"LLM REQUEST [lens={lens.key}] Model={model_name}")
-            
+
             start_time = time.time()
-            
-            # Call API
-            response = await _make_api_call(model=model_name, contents=contents, config=config)
-            
+            response = await _make_api_call(model=model_name, messages=messages, **kwargs)
             end_time = time.time()
-            
-            content = response.text
-            logger.info(f"LLM RESPONSE [lens={lens.key}]: {content[:200]}...") # Log 200 chars
-            
+
+            content = response.choices[0].message.content
+            logger.info(f"LLM RESPONSE [lens={lens.key}]: {content[:200]}...")
+
             # Parse JSON if needed
             if lens.output_schema:
                 try:
                     content = self._parse_json_robust(content)
                 except Exception as e:
                     logger.warning(f"Failed to parse JSON output for lens {lens.key}: {e}")
-            
+
             return Artifact(
                 lens_key=lens.key,
                 source_id=source_data.id,
@@ -264,7 +245,7 @@ class RunnerService:
                 created_at=end_time,
                 usage={"duration_ms": int((end_time - start_time) * 1000)}
             )
-            
+
         except Exception as e:
             logger.error(f"Error running lens {lens.key}: {e}")
             raise e
@@ -539,7 +520,6 @@ class RunnerService:
         if "arxiv.org" in url:
             try:
                 import requests
-                import base64
                 
                 # Normalize to PDF URL
                 # e.g. https://arxiv.org/abs/2310.00000 -> https://arxiv.org/pdf/2310.00000.pdf
@@ -552,10 +532,21 @@ class RunnerService:
                 response = requests.get(pdf_url)
                 if response.status_code == 200:
                     pdf_bytes = response.content
-                    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+
+                    # Extract text from PDF using pymupdf
+                    import fitz  # pymupdf
+                    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                    text_parts = []
+                    for page in doc:
+                        text_parts.append(page.get_text())
+                    doc.close()
+                    extracted_text = "\n".join(text_parts)
+
+                    logger.info(f"Extracted {len(extracted_text)} chars from PDF ({len(text_parts)} pages)")
+
                     return {
-                        "text": None, # No text extraction needed for this mode
-                        "base64_data": base64_pdf,
+                        "text": extracted_text,
+                        "base64_data": None,
                         "mime_type": "application/pdf",
                         "pdf_bytes": pdf_bytes  # Keep raw bytes for figure extraction
                     }

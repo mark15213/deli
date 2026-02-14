@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -6,26 +7,25 @@ import AppKit
 #endif
 
 struct CardView: View {
-    let quiz: Quiz
+    let card: StudyCard
     @State private var isFlipped = false
     @State private var offset = CGSize.zero
-    @State private var color: Color = .white
     @State private var selectedOption: String?
     @State private var clozeInput: String = ""
     @FocusState private var isInputFocused: Bool
-    
-    var onRemove: (() -> Void)?
-    
+
+    var onReview: ((Rating) -> Void)?
+
     var body: some View {
         ZStack {
             frontView
                 .opacity(isFlipped ? 0 : 1)
-            
+
             backView
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
                 .opacity(isFlipped ? 1 : 0)
         }
-        .id(quiz.id) // Force redraw when quiz changes to avoid view recycling issues
+        .id(card.id)
         .frame(width: 320, height: 480)
         .rotation3DEffect(
             .degrees(isFlipped ? 180 : 0),
@@ -37,9 +37,6 @@ struct CardView: View {
             DragGesture()
                 .onChanged { gesture in
                     offset = gesture.translation
-                    withAnimation {
-                        changeColor(width: offset.width)
-                    }
                 }
                 .onEnded { _ in
                     withAnimation {
@@ -50,113 +47,104 @@ struct CardView: View {
         .onTapGesture {
             hideKeyboard()
             withAnimation(.spring()) {
-                if !isFlipped {
-                    // Only allow flip if answer selected? No, allowed to peek.
-                }
                 isFlipped.toggle()
             }
         }
         .onDisappear {
             hideKeyboard()
         }
-        .onChange(of: quiz.id) { _, _ in
-            hideKeyboard()
-            selectedOption = nil
-            clozeInput = ""
-            isFlipped = false
-            offset = .zero
-            color = .white
-        }
     }
-    
+
     var frontView: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text(quiz.type.rawValue.uppercased())
+                Text(card.type.rawValue.uppercased())
                     .font(.caption)
                     .fontWeight(.bold)
                     .padding(5)
                     .background(Color.gray.opacity(0.2))
                     .cornerRadius(5)
                 Spacer()
-                if let tags = quiz.tags {
-                    ForEach(tags.prefix(2), id: \.self) { tag in
-                        Text("#\(tag)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                ForEach(card.tags.prefix(2), id: \.self) { tag in
+                    Text("#\(tag)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            
+
+            if let batch = card.batchIndex, let total = card.batchTotal {
+                Text("\(batch)/\(total)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
             Spacer()
-            
-            if quiz.type == .cloze {
+
+            if card.type == .cloze {
                 Text(maskedClozeQuestion)
-                    .font(.system(.title2, design: .serif))
+                    .font(DeliFont.cardQuestion(card.type))
                     .fontWeight(.medium)
                     .multilineTextAlignment(.leading)
                     .layoutPriority(1)
             } else {
-                Text(quiz.question)
-                    .font(.system(.title2, design: .rounded))
-                    .fontWeight(.bold)
-                    .multilineTextAlignment(.leading)
+                MarkdownView(card.question, fontSize: 20)
+                    .frame(maxHeight: 200)
                     .layoutPriority(1)
             }
-            
+
             Group {
-                if quiz.type == .cloze {
+                if card.type == .cloze {
                     clozeView
-                } else if quiz.type == .trueFalse {
+                } else if card.type == .trueFalse {
                     trueFalseView
-                } else if quiz.type == .mcq {
-                    if let options = quiz.options {
+                } else if card.type == .mcq {
+                    if let options = card.options {
                         mcqOptionsView(options: options)
                     }
                 }
             }
-            
+
             Spacer()
-            
+
             Text(selectedOption == nil ? "Tap to flip (or select answer)" : "Tap to flip")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding()
-        .background(Color.white)
-        .cornerRadius(24)
-        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+        .background(DeliColors.cardBackground)
+        .cornerRadius(DeliDimensions.cardCornerRadius)
+        .shadow(color: Color.black.opacity(0.1), radius: DeliDimensions.cardShadowRadius, x: 0, y: DeliDimensions.cardShadowY)
     }
-    
+
     var backView: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("ANSWER")
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundColor(.green)
-            
-            Text(quiz.answer)
-                .font(.system(.title2, design: .rounded))
-                .fontWeight(.bold)
-            
-            if let explanation = quiz.explanation {
+                .foregroundStyle(.green)
+
+            if let answer = card.answer {
+                MarkdownView(answer, fontSize: 20)
+                    .frame(maxHeight: 180)
+            }
+
+            if let explanation = card.explanation {
                 Divider()
                 Text("Explanation")
                     .font(.headline)
-                Text(explanation)
-                    .font(.body)
-                    .foregroundColor(.secondary)
+                MarkdownView(explanation, fontSize: 15)
+                    .frame(maxHeight: 160)
             }
-            
+
             Spacer()
         }
         .padding()
-        .background(Color.white)
-        .cornerRadius(24)
-        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+        .background(DeliColors.cardBackground)
+        .cornerRadius(DeliDimensions.cardCornerRadius)
+        .shadow(color: Color.black.opacity(0.1), radius: DeliDimensions.cardShadowRadius, x: 0, y: DeliDimensions.cardShadowY)
     }
-    
+
     func mcqOptionsView(options: [String]) -> some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -169,25 +157,25 @@ struct CardView: View {
     }
 
     func mcqOptionRow(option: String) -> some View {
-        Button(action: {
+        Button {
             if selectedOption == nil {
                 selectedOption = option
             }
-        }) {
+        } label: {
             HStack {
                 Text(option)
                     .font(.system(.body, design: .rounded))
                     .fontWeight(.medium)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                 Spacer()
                 if selectedOption == option {
-                    if option == quiz.answer {
+                    if option == card.answer {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                     } else {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -196,7 +184,7 @@ struct CardView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(
                         selectedOption == option
-                            ? (option == quiz.answer ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                            ? (option == card.answer ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
                             : Color.gray.opacity(0.05)
                     )
             )
@@ -204,7 +192,7 @@ struct CardView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(
                         selectedOption == option
-                            ? (option == quiz.answer ? Color.green : Color.red)
+                            ? (option == card.answer ? Color.green : Color.red)
                             : Color.gray.opacity(0.2),
                         lineWidth: selectedOption == option ? 2 : 1
                     )
@@ -215,38 +203,37 @@ struct CardView: View {
         .buttonStyle(PlainButtonStyle())
         .disabled(selectedOption != nil)
     }
-    
+
     var trueFalseView: some View {
         VStack(spacing: 12) {
             mcqOptionRow(option: "True")
             mcqOptionRow(option: "False")
         }
     }
-    
+
     @ViewBuilder
     var clozeView: some View {
-        if quiz.type == .cloze {
-            VStack(spacing: 16) {
+        VStack(spacing: 16) {
             Text("Type your answer:")
                 .font(.caption)
-                .foregroundColor(.secondary)
-            
+                .foregroundStyle(.secondary)
+
             HStack {
                 TextField("Tap to type answer", text: $clozeInput)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .focused($isInputFocused)
-                    .disabled(isFlipped || (selectedOption != nil)) // Disable if already submitted/checked
+                    .disabled(isFlipped || selectedOption != nil)
                     .padding(.vertical, 8)
-                
-                Button(action: {
-                    // Check answer
+
+                Button {
                     hideKeyboard()
-                    let isCorrect = clozeInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == quiz.answer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    selectedOption = isCorrect ? quiz.answer : "WRONG_ANSWER" // Use a marker for state
-                }) {
+                    let isCorrect = clozeInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        == (card.answer ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    selectedOption = isCorrect ? card.answer : "WRONG_ANSWER"
+                } label: {
                     Text("Check")
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .frame(height: 36)
                         .padding(.horizontal, 16)
                         .background(Color.blue)
@@ -255,76 +242,52 @@ struct CardView: View {
                 .buttonStyle(.plain)
                 .disabled(clozeInput.isEmpty || selectedOption != nil)
             }
-            
-            // Feedback
+
             if let selected = selectedOption {
-                if selected == quiz.answer {
-                    HStack {
+                HStack {
+                    if selected == card.answer {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                         Text("Correct!")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                             .fontWeight(.bold)
-                    }
-                } else {
-                    HStack {
+                    } else {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                         Text("Incorrect")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                             .fontWeight(.bold)
                     }
                 }
             }
         }
-        }
     }
-    
+
     var maskedClozeQuestion: String {
-        // Simple regex to replace {{c1::Answer}} with [...]
-        // Note: Foundation regex replacement in SwiftUI view computed property might be heavy if list is long,
-        // but for a single card it's fine.
         let pattern = "\\{\\{c\\d+::(.*?)(::.*?)?\\}\\}"
-        // A naive replacement for now:
-        var text = quiz.question
-        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+        var text = card.question
+        if let regex = try? NSRegularExpression(pattern: pattern) {
             let range = NSRange(location: 0, length: text.utf16.count)
-            text = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "[...]")
+            text = regex.stringByReplacingMatches(in: text, range: range, withTemplate: "[...]")
         }
         return text
     }
-    
-    func changeColor(width: CGFloat) {
-        switch width {
-        case -500...(-100):
-            color = .red
-        case 100...500:
-            color = .green
-        default:
-            color = .white
-        }
-    }
-    
+
     func handleSwipe(width: CGFloat) {
         switch width {
         case -500...(-150):
-            // Forgot (Left)
             offset = CGSize(width: -500, height: 0)
             hideKeyboard()
-            onRemove?()
+            onReview?(.again)
         case 150...500:
-            // Knew (Right)
             offset = CGSize(width: 500, height: 0)
             hideKeyboard()
-            onRemove?()
+            onReview?(.good)
         default:
-            // Reset
             offset = .zero
-            color = .white
         }
     }
-    
-    // MARK: - Helpers
+
     private func hideKeyboard() {
         isInputFocused = false
         #if canImport(UIKit)
