@@ -279,7 +279,7 @@ class Source(Base):
     # Stores: sync_frequency, filters, etc. - schema varies by type
     subscription_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     
-    # Status: PENDING, PROCESSING, COMPLETED (snapshot), ACTIVE, PAUSED, ERROR
+    # Status: PENDING, PROCESSING, COMPLETED (snapshot), ACTIVE, PAUSED, FAILED
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     next_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # For subscriptions

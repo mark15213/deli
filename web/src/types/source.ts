@@ -151,7 +151,7 @@ export interface Source {
     connection_config: ConnectionConfig;
     ingestion_rules: Record<string, any>;
     subscription_config?: SubscriptionConfig;
-    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'ACTIVE' | 'PAUSED' | 'ERROR';
+    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'ACTIVE' | 'PAUSED' | 'FAILED';
     last_synced_at?: string;
     next_sync_at?: string;
     error_log?: string;

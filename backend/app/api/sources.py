@@ -204,6 +204,50 @@ async def get_child_sources(
     children = result.scalars().all()
     return children
 
+@router.post("/{source_id}/retry", response_model=SourceResponse)
+async def retry_source(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_id: UUID,
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Retry a failed source.
+    Resets status to PENDING and triggers background processing.
+    """
+    import asyncio
+    from app.background.paper_tasks import process_paper_background
+    import logging
+    
+    logger = logging.getLogger(__name__)
+
+    # Get source
+    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id)
+    if not is_shared_mode():
+        stmt = stmt.where(Source.user_id == current_user.id)
+    result = await db.execute(stmt)
+    source = result.scalar_one_or_none()
+    
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+        
+    # Only allow retrying failed or stuck items
+    # (Allowing PENDING re-trigger might be useful too if it's really stuck)
+    
+    # Reset status
+    source.status = "PENDING"
+    source.error_log = None # Clear error
+    db.add(source)
+    await db.commit()
+    await db.refresh(source)
+    
+    # Trigger processing
+    if source.type in ["ARXIV_PAPER", "arxiv_paper"]:
+         logger.info(f"[API] Retrying processing for paper source {source.id}")
+         asyncio.create_task(process_paper_background(source.id))
+         
+    return source
+
 @router.put("/{source_id}", response_model=SourceResponse)
 async def update_source(
     *,

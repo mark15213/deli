@@ -16,7 +16,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { Source } from "@/types/source"
-import { deleteSource, syncSource, updateSource } from "@/lib/api/sources"
+import { deleteSource, syncSource, updateSource, retrySource } from "@/lib/api/sources"
 import { fetchClient } from "@/lib/api/client"
 import React from "react"
 import { LensPipelineCard, LensStatus } from "./LensPipelineCard"
@@ -248,6 +248,25 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
         (s: any) => !defaultLenses.some(dl => dl.key === s.key)
     );
 
+    const handleRetry = async () => {
+        if (!source) return;
+        setSyncing(true); // Reuse syncing state for loading indicator
+        try {
+            await retrySource(source.id);
+            // Refresh
+            const sourceRes = await fetchClient(`/sources/${source.id}`);
+            if (sourceRes.ok) {
+                setSource(await sourceRes.json());
+                setLogs([]); // Clear logs as it restarts
+            }
+        } catch (e) {
+            console.error("Failed to retry source", e);
+            alert("Failed to retry source");
+        } finally {
+            setSyncing(false);
+        }
+    }
+
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
             <SheetContent className="w-[500px] sm:w-[700px] sm:max-w-none flex flex-col h-full bg-background" side="right">
@@ -258,7 +277,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                         <div>
                             <SheetTitle className="flex items-center gap-2 text-xl">
                                 {source?.name || "Loading..."}
-                                <span className={`flex h-2 w-2 rounded-full ring-4 ${source?.status === 'ACTIVE' ? 'bg-green-500 ring-green-500/20' : 'bg-gray-500 ring-gray-500/20'}`} />
+                                <span className={`flex h-2 w-2 rounded-full ring-4 ${source?.status === 'ACTIVE' ? 'bg-green-500 ring-green-500/20' : source?.status === 'FAILED' ? 'bg-red-500 ring-red-500/20' : 'bg-gray-500 ring-gray-500/20'}`} />
                             </SheetTitle>
                             <SheetDescription className="mt-1 flex gap-2 items-center">
                                 <span>{source?.type}</span>
@@ -271,6 +290,12 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                 >
                                     Source Link
                                 </a>
+                                {source?.status === 'FAILED' && (
+                                    <Button variant="outline" size="sm" onClick={handleRetry} disabled={syncing} className="ml-4 h-6 gap-1 text-red-500 border-red-200 hover:bg-red-50">
+                                        <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+                                        Retry Processing
+                                    </Button>
+                                )}
                             </SheetDescription>
                             {(source?.connection_config as any)?.author && (
                                 <p className="text-sm text-muted-foreground mt-1">
