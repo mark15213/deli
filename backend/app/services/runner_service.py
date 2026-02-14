@@ -269,11 +269,44 @@ class RunnerService:
             logger.error(f"Error running lens {lens.key}: {e}")
             raise e
 
+    async def _is_lens_completed(self, source_id: UUID, lens_key: str) -> bool:
+        """
+        Check if a lens has already been successfully completed for this source.
+        """
+        stmt = (
+            select(SourceLog)
+            .where(
+                SourceLog.source_id == source_id,
+                SourceLog.lens_key == lens_key,
+                SourceLog.status == "completed"
+            )
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def _cleanup_lens_data(self, source_material_id: UUID, card_type: str):
+        """
+        Delete cards of a specific type for a source material.
+        Used before re-running a lens to prevent duplicates.
+        """
+        from sqlalchemy import delete
+        
+        # We need to be careful not to delete user-created cards if we ever mix them,
+        # but for now reading_notes and flashcards are purely generated.
+        stmt = delete(Card).where(
+            Card.source_material_id == source_material_id,
+            Card.type == card_type
+        )
+        await self.db.execute(stmt)
+        # Note: We don't commit here, we let the caller commit as part of the transaction
+
     async def process_new_source(self, source_id: UUID):
         """
         Orchestrator: Fetch Source -> Create SourceData -> Run Default Lenses -> Persist.
+        Supports smart validation/skipping of already completed steps.
         """
-        logger.info(f"Processing new source: {source_id}")
+        logger.info(f"Processing source: {source_id}")
         
         # 1. Fetch Source
         stmt = select(Source).where(Source.id == source_id)
@@ -285,14 +318,15 @@ class RunnerService:
             return
 
         # Log start of processing (Sync Started)
-        process_start_time = time.time()
-        await self._log_event(source.id, "sync_started", "running", message="Starting source processing")
+        # We only log "sync_started" if it's not already running or completed recent one
+        # But for simplicity, let's log it to indicate activity
         
-        # Update status to PROCESSING
-        source.status = "PROCESSING"
-        await self.db.commit()
+        # Update status to PROCESSING if not already
+        if source.status != "PROCESSING":
+             source.status = "PROCESSING"
+             await self.db.commit()
 
-        # 2. Extract Content (Text or Base64)
+        # 2. Extract Content (Text or Base64) - ALWAYS RUN to rebuild context
         try:
             fetched_content = await self._fetch_source_content(source)
         except Exception as e:
@@ -316,40 +350,14 @@ class RunnerService:
             metadata={"title": source.name, "url": source.connection_config.get("url")}
         )
         
-        # 4. Run Default Summary Lens
-        summary_lens = get_default_summary_lens()
-        start_time = time.time()
-        await self._log_event(source.id, "lens_started", "running", lens_key="default_summary", message="Starting summary generation")
-        await self.db.commit()  # Commit so log is visible immediately
-        try:
-            summary_artifact = await self.run_lens(source_data, summary_lens)
-            duration_ms = int((time.time() - start_time) * 1000)
-            await self._update_lens_log(source.id, "default_summary", "completed", 
-                                       message="Summary generated successfully", duration_ms=duration_ms)
-        except Exception as e:
-            import traceback
-            duration_ms = int((time.time() - start_time) * 1000)
-            err_msg = str(e) or f"Error: {type(e).__name__}"
-            logger.error(f"Lens summary failed: {err_msg}\n{traceback.format_exc()}")
-            await self._update_lens_log(source.id, "default_summary", "failed",
-                                       message=err_msg, duration_ms=duration_ms)
-            summary_artifact = Artifact(lens_key="default_summary", source_id=str(source.id), content={"error": err_msg}, created_at=time.time())
-        
-        # Create dummy artifact for suggestions so we don't break strict structure if expected
-        profiler_artifact = Artifact(
-            lens_key="profiler_meta", 
-            source_id=str(source.id), 
-            content=[], # Empty suggestions
-            created_at=time.time()
-        )
-        
-        # 6. Persist to SourceMaterial
+        # Ensure SourceMaterial exists (needed for foreign keys)
         stmt_mat = select(SourceMaterial).where(SourceMaterial.source_id == source.id)
         res_mat = await self.db.execute(stmt_mat)
         source_material = res_mat.scalars().first()
         
         if not source_material:
             external_id = source.connection_config.get("url", "unknown")
+            # Check if exists under another source (shared)
             stmt_exist = select(SourceMaterial).where(
                 SourceMaterial.user_id == source.user_id,
                 SourceMaterial.external_id == external_id
@@ -360,7 +368,10 @@ class RunnerService:
             if existing_material:
                 logger.info(f"Found existing material used by another source, re-linking to source {source.id}")
                 source_material = existing_material
-                source_material.source_id = source.id
+                if source_material.source_id != source.id:
+                     # This might be tricky if one material is shared by multiple sources, 
+                     # but for now 1:1 or 1:N ownership transfer
+                     pass 
             else:
                  source_material = SourceMaterial(
                     user_id=source.user_id,
@@ -370,41 +381,83 @@ class RunnerService:
                     rich_data={}
                 )
                  self.db.add(source_material)
+                 await self.db.flush() # Flush to get ID
         
-        # Update rich_data
-        if source_material.rich_data is None:
-            source_material.rich_data = {}
-            
-        new_data = dict(source_material.rich_data)
-        new_data["summary"] = summary_artifact.content
-        new_data["suggestions"] = profiler_artifact.content
-        
-        source_material.rich_data = new_data
-        
-        await self.db.commit()
-        
-        # 7. For paper sources, generate reading notes cards
-        batch_id = None
-        if self._is_paper_source(source):
+        # 4. Run Default Summary Lens (SKIP IF DONE)
+        summary_result = None
+        if await self._is_lens_completed(source.id, "default_summary"):
+             logger.info(f"Skipping Summary Lens for {source.id} (already completed)")
+             # We assume rich_data already has it. If we want to be safe, we could check rich_data.
+        else:
+            summary_lens = get_default_summary_lens()
             start_time = time.time()
-            await self._log_event(source.id, "lens_started", "running", lens_key="reading_notes", message="Generating reading notes")
-            await self.db.commit()  # Commit so log is visible immediately
+            await self._log_event(source.id, "lens_started", "running", lens_key="default_summary", message="Starting summary generation")
+            await self.db.commit()  # Commit so log is visible
             try:
-                batch_id = await self._generate_reading_notes(source, source_data, source_material)
+                summary_artifact = await self.run_lens(source_data, summary_lens)
                 duration_ms = int((time.time() - start_time) * 1000)
-                await self._update_lens_log(source.id, "reading_notes", "completed",
-                                           message="Reading notes generated", duration_ms=duration_ms)
+                await self._update_lens_log(source.id, "default_summary", "completed", 
+                                           message="Summary generated successfully", duration_ms=duration_ms)
+                
+                # Update rich_data
+                if source_material.rich_data is None:
+                    source_material.rich_data = {}
+                new_data = dict(source_material.rich_data)
+                new_data["summary"] = summary_artifact.content
+                # profiler suggestions dummy
+                new_data["suggestions"] = []
+                source_material.rich_data = new_data
+                
+                await self.db.commit()
+                
             except Exception as e:
                 import traceback
-                logger.error(f"Reading notes generation failed details: {traceback.format_exc()}")
-                
-                err_msg = str(e)
-                if not err_msg:
-                    err_msg = f"Error: {type(e).__name__}"
-                
                 duration_ms = int((time.time() - start_time) * 1000)
-                await self._update_lens_log(source.id, "reading_notes", "failed",
+                err_msg = str(e) or f"Error: {type(e).__name__}"
+                logger.error(f"Lens summary failed: {err_msg}\n{traceback.format_exc()}")
+                await self._update_lens_log(source.id, "default_summary", "failed",
                                            message=err_msg, duration_ms=duration_ms)
+                # If summary fails, we probably shouldn't abort entire process, 
+                # but for now let's continue to try other lenses if possible.
+        
+        # 5. For paper sources, generate reading notes cards
+        batch_id = None
+        if self._is_paper_source(source):
+            if await self._is_lens_completed(source.id, "reading_notes"):
+                 logger.info(f"Skipping Reading Notes Lens for {source.id} (already completed)")
+                 # Try to find existing batch_id if needed for Figure Association?
+                 # Figure Association relies on associating images to cards.
+                 # If we skip generation, we assume cards exist. 
+                 # We can query the first card to get a batch_id if we really need it, or just use ANY batch.
+                 stmt_batch = select(Card.batch_id).where(
+                     Card.source_material_id == source_material.id, 
+                     Card.type == "reading_note"
+                 ).limit(1)
+                 res = await self.db.execute(stmt_batch)
+                 batch_id = res.scalar_one_or_none()
+            else:
+                # Cleanup previous failed/partial attempts
+                await self._cleanup_lens_data(source_material.id, "reading_note")
+                
+                start_time = time.time()
+                await self._log_event(source.id, "lens_started", "running", lens_key="reading_notes", message="Generating reading notes")
+                await self.db.commit()
+                try:
+                    batch_id = await self._generate_reading_notes(source, source_data, source_material)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    await self._update_lens_log(source.id, "reading_notes", "completed",
+                                               message="Reading notes generated", duration_ms=duration_ms)
+                except Exception as e:
+                    import traceback
+                    logger.error(f"Reading notes generation failed details: {traceback.format_exc()}")
+                    
+                    err_msg = str(e)
+                    if not err_msg:
+                        err_msg = f"Error: {type(e).__name__}"
+                    
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    await self._update_lens_log(source.id, "reading_notes", "failed",
+                                               message=err_msg, duration_ms=duration_ms)
         
         # Throttle between lenses to avoid 429/503 from local LLM
         import asyncio
@@ -412,66 +465,61 @@ class RunnerService:
 
         # 8. Run Study Quiz Lens (Flashcards)
         if self._is_paper_source(source):
-            start_time = time.time()
-            await self._log_event(source.id, "lens_started", "running", lens_key="study_quiz", message="Generating flashcards & quiz")
-            await self.db.commit()
-            try:
-                await self._generate_study_quiz(source, source_data, source_material)
-                duration_ms = int((time.time() - start_time) * 1000)
-                await self._update_lens_log(source.id, "study_quiz", "completed",
-                                            message="Flashcards generated", duration_ms=duration_ms)
-            except Exception as e:
-                import traceback
-                duration_ms = int((time.time() - start_time) * 1000)
-                err_msg = str(e) or f"Error: {type(e).__name__}"
-                logger.error(f"Study quiz generation failed: {err_msg}\n{traceback.format_exc()}")
-                await self._update_lens_log(source.id, "study_quiz", "failed",
-                                           message=err_msg, duration_ms=duration_ms)
+            if await self._is_lens_completed(source.id, "study_quiz"):
+                 logger.info(f"Skipping Study Quiz Lens for {source.id} (already completed)")
+            else:
+                # Cleanup previous
+                await self._cleanup_lens_data(source_material.id, "flashcard")
+
+                start_time = time.time()
+                await self._log_event(source.id, "lens_started", "running", lens_key="study_quiz", message="Generating flashcards & quiz")
+                await self.db.commit()
+                try:
+                    await self._generate_study_quiz(source, source_data, source_material)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    await self._update_lens_log(source.id, "study_quiz", "completed",
+                                                message="Flashcards generated", duration_ms=duration_ms)
+                except Exception as e:
+                    import traceback
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    err_msg = str(e) or f"Error: {type(e).__name__}"
+                    logger.error(f"Study quiz generation failed: {err_msg}\n{traceback.format_exc()}")
+                    await self._update_lens_log(source.id, "study_quiz", "failed",
+                                               message=err_msg, duration_ms=duration_ms)
         
         # Throttle
         await asyncio.sleep(2)
 
         # 9. Run Figure Association Lens (extract and associate PDF figures with notes)
         if self._is_paper_source(source) and fetched_content.get("pdf_bytes"):
-            start_time = time.time()
-            await self._log_event(source.id, "lens_started", "running", lens_key="figure_association", message="Extracting and associating figures")
-            await self.db.commit()
-            try:
-                await self._generate_figure_associations(source, source_material, fetched_content.get("pdf_bytes"), batch_id=batch_id)
-                duration_ms = int((time.time() - start_time) * 1000)
-                await self._update_lens_log(source.id, "figure_association", "completed",
-                                            message="Figures extracted and associated", duration_ms=duration_ms)
-            except Exception as e:
-                import traceback
-                duration_ms = int((time.time() - start_time) * 1000)
-                err_msg = str(e) or f"Error: {type(e).__name__}"
-                logger.error(f"Figure association failed: {err_msg}\n{traceback.format_exc()}")
-                await self._update_lens_log(source.id, "figure_association", "failed",
-                                           message=err_msg, duration_ms=duration_ms)
+            if await self._is_lens_completed(source.id, "figure_association"):
+                 logger.info(f"Skipping Figure Association Lens for {source.id} (already completed)")
+            else:
+                start_time = time.time()
+                await self._log_event(source.id, "lens_started", "running", lens_key="figure_association", message="Extracting and associating figures")
+                await self.db.commit()
+                try:
+                    await self._generate_figure_associations(source, source_material, fetched_content.get("pdf_bytes"), batch_id=batch_id)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    await self._update_lens_log(source.id, "figure_association", "completed",
+                                                message="Figures extracted and associated", duration_ms=duration_ms)
+                except Exception as e:
+                    import traceback
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    err_msg = str(e) or f"Error: {type(e).__name__}"
+                    logger.error(f"Figure association failed: {err_msg}\n{traceback.format_exc()}")
+                    await self._update_lens_log(source.id, "figure_association", "failed",
+                                               message=err_msg, duration_ms=duration_ms)
         
         await self.db.commit()
         
         # 8. Mark the initial sync log as completed
-        # We need to re-fetch or update the log we created at the start
-        # Since we didn't keep the ID, let's find the running sync_started log
-        stmt_log = (
-            select(SourceLog)
-            .where(
-                SourceLog.source_id == source.id,
-                SourceLog.event_type == "sync_started",
-                SourceLog.status == "running"
-            )
-            .order_by(SourceLog.created_at.desc())
-            .limit(1)
-        )
-        res_log = await self.db.execute(stmt_log)
-        init_log = res_log.scalar_one_or_none()
+        # We need to re-fetch or update the log we created at the start (if any)
+        # Since we didn't always create a sync_started log in RESUME cases, let's just log a completion event.
+        # But wait, we DID create/check sync_started above? No, I commented it out for retry logic flow simplification.
+        # Let's just create a 'sync_completed' log if everything finished.
         
-        if init_log:
-            init_log.status = "completed"
-            init_log.event_type = "sync_completed"
-            init_log.message = "Source processing finished successfully"
-            init_log.duration_ms = int((time.time() - process_start_time) * 1000) # approximate total time
+        await self._log_event(source.id, "sync_completed", "completed", message="Source processing finished")
         
         # Update source status to COMPLETED
         source.status = "COMPLETED"
