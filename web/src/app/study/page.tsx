@@ -144,23 +144,37 @@ export default function StudyPage() {
 
         // Map API StudyCard to StudyContainer's StudyCard interface
         // Note: They are slightly different (StudyContainer expects 'content', API returns 'question')
-        const mappedCards = queue.map(c => ({
-            id: c.id,
-            type: c.type as any, // "note" | "flashcard" | "quiz" | "reading_note"
-            content: c.question, // Map question to content
-            title: c.source_title,
-            answer: c.answer,
-            images: c.images,
-            source: c.source_title,
-            // Quiz props
-            quizType: (["mcq", "true_false", "cloze"].includes(c.type) ? c.type : "mcq") as any,
-            options: c.options?.map((o, i) => ({ id: String(i), text: o, isCorrect: i === 0 })), // Warning: This logic assumes option 0 is correct or needs real data
-            correctAnswer: c.answer, // For cloze
-            explanation: c.explanation,
-            batch_id: c.batch_id,
-            batch_index: c.batch_index,
-            batch_total: c.batch_total,
-        }))
+        const mappedCards = queue.map(c => {
+            // Mapping based on card type
+            let content = c.question
+            let title = c.source_title
+
+            if (c.type === "reading_note") {
+                // For reading notes:
+                // question -> Note Title
+                // answer -> Note Content (Markdown)
+                title = c.question
+                content = c.answer || ""
+            }
+
+            return {
+                id: c.id,
+                type: c.type as any, // "note" | "flashcard" | "quiz" | "reading_note"
+                content: content,
+                title: title,
+                answer: c.answer,
+                images: c.images,
+                source: c.source_title,
+                // Quiz props
+                quizType: (["mcq", "true_false", "cloze"].includes(c.type) ? c.type : "mcq") as any,
+                options: c.options?.map((o, i) => ({ id: String(i), text: o, isCorrect: i === 0 })), // Warning: This logic assumes option 0 is correct or needs real data
+                correctAnswer: c.answer, // For cloze
+                explanation: c.explanation,
+                batch_id: c.batch_id,
+                batch_index: c.batch_index,
+                batch_total: c.batch_total,
+            }
+        })
 
         // Verify options logic: API for quiz options might need structure. 
         // Checking `StudyCard` definition in `web/src/lib/api/study.ts`: `options?: string[]`

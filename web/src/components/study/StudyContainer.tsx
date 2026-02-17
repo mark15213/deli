@@ -149,11 +149,16 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                 </Link>
-                {currentIndex > 0 && (
-                    <Button variant="ghost" size="icon" onClick={goToPreviousCard} title="Previous Card">
-                        <RotateCcw className="h-4 w-4" />
-                    </Button>
-                )}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={goToPreviousCard}
+                    disabled={currentIndex === 0}
+                    title="Previous Card"
+                    className={currentIndex === 0 ? "opacity-20" : ""}
+                >
+                    <RotateCcw className="h-4 w-4" />
+                </Button>
                 <div className="flex-1">
                     <h1 className="font-semibold text-sm">{deckTitle}</h1>
                     {/* Batch indicator for reading notes */}
