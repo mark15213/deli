@@ -6,7 +6,7 @@ import { NoteCard } from "./NoteCard"
 import { FlashcardView } from "./FlashcardView"
 import { QuizCard } from "./QuizCard"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, X, SkipForward } from "lucide-react"
+import { ArrowLeft, X, SkipForward, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { skipBatch } from "@/lib/api/study"
@@ -57,6 +57,12 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
             // Session complete - move past last index to show completion screen
             setCurrentIndex(currentIndex + 1)
             onComplete?.()
+        }
+    }
+
+    const goToPreviousCard = () => {
+        if (currentIndex > 0) {
+            setCurrentIndex(currentIndex - 1)
         }
     }
 
@@ -143,6 +149,11 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                 </Link>
+                {currentIndex > 0 && (
+                    <Button variant="ghost" size="icon" onClick={goToPreviousCard} title="Previous Card">
+                        <RotateCcw className="h-4 w-4" />
+                    </Button>
+                )}
                 <div className="flex-1">
                     <h1 className="font-semibold text-sm">{deckTitle}</h1>
                     {/* Batch indicator for reading notes */}
