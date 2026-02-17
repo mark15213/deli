@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.core.lens import SourceData, Lens, Artifact
 from app.core.config import get_settings
+from app.core.llm_monitor import LLMMonitor
 from app.models.models import Source, SourceMaterial, Card, CardStatus, SourceLog
 from app.lenses.registry import get_default_summary_lens, get_profiler_lens, get_reading_notes_lens, get_study_quiz_lens, get_figure_association_lens
 from app.services.pdf_extractor import extract_figures_from_pdf, save_figures_to_local, get_figure_info_for_prompt
@@ -224,9 +225,20 @@ class RunnerService:
 
             logger.info(f"LLM REQUEST [lens={lens.key}] Model={model_name}")
 
-            start_time = time.time()
-            response = await _make_api_call(model=model_name, messages=messages, **kwargs)
-            end_time = time.time()
+            # Monitor LLM call
+            async with LLMMonitor(
+                db=self.db,
+                source_id=UUID(source_data.id) if source_data.id else None,
+                lens_key=lens.key,
+                model=model_name
+            ) as llm_log:
+                llm_log.record_request(messages, **kwargs)
+
+                start_time = time.time()
+                response = await _make_api_call(model=model_name, messages=messages, **kwargs)
+                end_time = time.time()
+
+                llm_log.record_response(response)
 
             content = response.choices[0].message.content
             logger.info(f"LLM RESPONSE [lens={lens.key}]: {content[:200]}...")

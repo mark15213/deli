@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.llm_monitor import LLMMonitor
 from app.models import Card, CardStatus, Deck, User, SourceMaterial
 
 logger = logging.getLogger(__name__)
@@ -130,14 +131,25 @@ class GeneratorService:
         """
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that generates quizzes. Always respond with valid JSON only."},
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-            )
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant that generates quizzes. Always respond with valid JSON only."},
+                {"role": "user", "content": prompt},
+            ]
+
+            async with LLMMonitor(
+                db=self.db,
+                lens_key="quiz_generation",
+                model=self.model
+            ) as llm_log:
+                llm_log.record_request(messages, response_format={"type": "json_object"})
+
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                )
+
+                llm_log.record_response(response)
 
             data = json.loads(response.choices[0].message.content)
             return QuizList(**data)
