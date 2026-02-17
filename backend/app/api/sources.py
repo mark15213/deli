@@ -596,5 +596,126 @@ async def get_source_logs(
     )
     logs_result = await db.execute(logs_stmt)
     logs = logs_result.scalars().all()
+
+    return logs
+
+
+@router.get("/{source_id}/llm-calls", response_model=List[SourceLogResponse])
+async def get_source_llm_calls(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_id: UUID,
+    current_user: User = Depends(deps.get_current_user),
+    limit: int = 50,
+) -> Any:
+    """
+    Get LLM call logs for a source (filtered by event_type='llm_call').
+    Includes token usage, duration, and error information.
+    """
+    # Verify source exists and belongs to user
+    source_stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        source_stmt = source_stmt.where(Source.user_id == current_user.id)
+    source_result = await db.execute(source_stmt)
+    source = source_result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    # Fetch LLM call logs only
+    logs_stmt = (
+        select(SourceLog)
+        .where(SourceLog.source_id == source_id)
+        .where(SourceLog.event_type == "llm_call")
+        .order_by(SourceLog.created_at.desc())
+        .limit(limit)
+    )
+    logs_result = await db.execute(logs_stmt)
+    logs = logs_result.scalars().all()
+
+    return logs
+
+
+@router.get("/{source_id}/llm-stats")
+async def get_source_llm_stats(
+    *,
+    db: AsyncSession = Depends(deps.get_db),
+    source_id: UUID,
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Get aggregated LLM call statistics for a source.
+    Returns total tokens, call count, average duration, and error rate.
+    """
+    # Verify source exists and belongs to user
+    source_stmt = select(Source).where(Source.id == source_id)
+    if not is_shared_mode():
+        source_stmt = source_stmt.where(Source.user_id == current_user.id)
+    source_result = await db.execute(source_stmt)
+    source = source_result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    # Fetch all LLM call logs
+    logs_stmt = (
+        select(SourceLog)
+        .where(SourceLog.source_id == source_id)
+        .where(SourceLog.event_type == "llm_call")
+    )
+    logs_result = await db.execute(logs_stmt)
+    logs = logs_result.scalars().all()
+
+    if not logs:
+        return {
+            "total_calls": 0,
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "average_duration_ms": 0,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "by_lens": {},
+        }
+
+    # Aggregate stats
+    total_tokens = 0
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_duration = 0
+    error_count = 0
+    by_lens = {}
+
+    for log in logs:
+        extra = log.extra_data or {}
+        total_tokens += extra.get("total_tokens", 0)
+        prompt_tokens += extra.get("prompt_tokens", 0)
+        completion_tokens += extra.get("completion_tokens", 0)
+        total_duration += extra.get("duration_ms", 0)
+
+        if log.status == "failed":
+            error_count += 1
+
+        # Group by lens
+        lens = log.lens_key or "unknown"
+        if lens not in by_lens:
+            by_lens[lens] = {
+                "count": 0,
+                "tokens": 0,
+                "errors": 0,
+            }
+        by_lens[lens]["count"] += 1
+        by_lens[lens]["tokens"] += extra.get("total_tokens", 0)
+        if log.status == "failed":
+            by_lens[lens]["errors"] += 1
+
+    return {
+        "total_calls": len(logs),
+        "total_tokens": total_tokens,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "average_duration_ms": int(total_duration / len(logs)) if logs else 0,
+        "error_count": error_count,
+        "error_rate": error_count / len(logs) if logs else 0.0,
+        "by_lens": by_lens,
+    }
     
     return logs

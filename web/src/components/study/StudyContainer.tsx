@@ -37,9 +37,10 @@ interface StudyContainerProps {
     deckTitle?: string
     onComplete?: () => void
     onBatchSkipped?: (batchId: string) => void
+    onReview?: (cardId: string, rating: 1 | 2 | 3 | 4) => Promise<void>
 }
 
-export function StudyContainer({ cards, deckTitle = "Learning Session", onComplete, onBatchSkipped }: StudyContainerProps) {
+export function StudyContainer({ cards, deckTitle = "Learning Session", onComplete, onBatchSkipped, onReview }: StudyContainerProps) {
     const [currentIndex, setCurrentIndex] = useState(0)
     const [completedCards, setCompletedCards] = useState<string[]>([])
     const [skippingBatch, setSkippingBatch] = useState(false)
@@ -59,16 +60,31 @@ export function StudyContainer({ cards, deckTitle = "Learning Session", onComple
         }
     }
 
-    const handleNoteRead = () => {
+    const handleNoteRead = async () => {
+        if (onReview) {
+            await onReview(currentCard.id, 3) // Mark as GOOD/passive review
+        }
         goToNextCard()
     }
 
-    const handleFlashcardRate = (rating: "forgot" | "hard" | "easy") => {
+    const handleFlashcardRate = async (rating: "forgot" | "hard" | "easy") => {
+        let numericRating: 1 | 2 | 3 | 4 = 3 // default good
+        if (rating === "forgot") numericRating = 1
+        else if (rating === "hard") numericRating = 2
+        else if (rating === "easy") numericRating = 4
+
+        if (onReview) {
+            await onReview(currentCard.id, numericRating)
+        }
+
         console.log("Card rated:", rating)
         goToNextCard()
     }
 
-    const handleQuizComplete = (isCorrect: boolean) => {
+    const handleQuizComplete = async (isCorrect: boolean) => {
+        if (onReview) {
+            await onReview(currentCard.id, isCorrect ? 3 : 1) // GOOD or AGAIN
+        }
         console.log("Quiz completed:", isCorrect ? "correct" : "incorrect")
         goToNextCard()
     }
