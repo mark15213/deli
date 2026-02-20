@@ -3,7 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { Home, Rss, Inbox, Layers, Brain, Zap, ChevronLeft, ChevronRight, LogOut, Beaker } from "lucide-react"
+import { Home, Rss, Inbox, Layers, Brain, Zap, ChevronLeft, ChevronRight, LogOut, Beaker, Workflow } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
@@ -35,6 +35,11 @@ const sidebarItems = [
         title: "Learn",
         href: "/study",
         icon: Brain,
+    },
+    {
+        title: "Pipelines",
+        href: "/pipelines",
+        icon: Workflow,
     },
     {
         title: "Gulp",

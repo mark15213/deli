@@ -259,8 +259,8 @@ async def get_study_queue(
         StudyCard(
             id=card.id,
             type=card.type,
-            question=card.content.get("question", "") if card.content else "",
-            answer=card.content.get("answer") if card.content else None,
+            question=(card.content.get("question") or card.content.get("title", "")) if card.content else "",
+            answer=(card.content.get("answer") or card.content.get("content")) if card.content else None,
             options=card.content.get("options") if card.content else None,
             explanation=card.content.get("explanation") if card.content else None,
             images=card.content.get("images") if card.content else None,
@@ -380,8 +380,8 @@ async def get_study_papers(
             StudyCard(
                 id=card.id,
                 type=card.type,
-                question=card.content.get("question", "") if card.content else "",
-                answer=card.content.get("answer") if card.content else None,
+                question=(card.content.get("question") or card.content.get("title", "")) if card.content else "",
+                answer=(card.content.get("answer") or card.content.get("content")) if card.content else None,
                 options=card.content.get("options") if card.content else None,
                 explanation=card.content.get("explanation") if card.content else None,
                 images=card.content.get("images") if card.content else None,
@@ -512,10 +512,13 @@ async def submit_review(
     review_log = ReviewLog(
         user_id=current_user.id,
         card_id=card_id,
-        grade=review.rating.value,
+        rating=review.rating.value,
         state_before=state_before,
         stability_before=stability_before,
         difficulty_before=difficulty_before,
+        state_after=new_state,
+        stability_after=new_stability,
+        difficulty_after=new_difficulty,
     )
     db.add(review_log)
     
@@ -853,8 +856,8 @@ async def get_gulp_feed(
         return GulpCard(
             id=card.id,
             type=card.type,
-            question=card.content.get("question", "") if card.content else "",
-            answer=card.content.get("answer") if card.content else None,
+            question=(card.content.get("question") or card.content.get("title", "")) if card.content else "",
+            answer=(card.content.get("answer") or card.content.get("content")) if card.content else None,
             options=card.content.get("options") if card.content else None,
             explanation=card.content.get("explanation") if card.content else None,
             images=card.content.get("images") if card.content else None,

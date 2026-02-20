@@ -65,9 +65,20 @@ class LLMCallLog:
             return int((self.end_time - self.start_time) * 1000)
         return 0
 
+    @staticmethod
+    def _sanitize_for_pg(value: Any) -> Any:
+        """Recursively strip \\u0000 null bytes from strings (PostgreSQL rejects them in JSONB)."""
+        if isinstance(value, str):
+            return value.replace("\x00", "")
+        if isinstance(value, dict):
+            return {k: LLMCallLog._sanitize_for_pg(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [LLMCallLog._sanitize_for_pg(item) for item in value]
+        return value
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage."""
-        return {
+        """Convert to dictionary for storage (sanitised for PostgreSQL)."""
+        data = {
             "model": self.model,
             "duration_ms": self.duration_ms,
             "prompt_tokens": self.prompt_tokens,
@@ -77,6 +88,7 @@ class LLMCallLog:
             "response_preview": self.response_content[:500] if self.response_content else "",
             "error": self.error,
         }
+        return self._sanitize_for_pg(data)
 
     def _truncate_messages(self, messages: list, max_length: int = 1000) -> list:
         """Truncate message content for storage."""

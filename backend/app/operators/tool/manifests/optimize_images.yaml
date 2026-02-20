@@ -1,0 +1,12 @@
+key: optimize_images
+name: Optimize Images
+description: Resize and compress images for LLM multimodal input
+input_ports:
+  - key: images
+    type: images
+    description: Raw image bytes list
+output_ports:
+  - key: images
+    type: images
+    description: Optimised JPEG image bytes list
+handler: app.operators.tool.handlers.optimize_images

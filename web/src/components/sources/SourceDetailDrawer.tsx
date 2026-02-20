@@ -19,13 +19,14 @@ import { Source } from "@/types/source"
 import { deleteSource, syncSource, updateSource, retrySource } from "@/lib/api/sources"
 import { fetchClient } from "@/lib/api/client"
 import React from "react"
-import { LensPipelineCard, LensStatus } from "./LensPipelineCard"
+import { PipelineStatusSection } from "./PipelineStatusSection"
 
 interface SourceLog {
     id: string
     source_id: string
     event_type: string
     lens_key: string | null
+    step_key: string | null
     status: string
     message: string | null
     duration_ms: number | null
@@ -54,12 +55,13 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
 
     // Fetch Source Data & Logs logic
     React.useEffect(() => {
-        let intervalId: NodeJS.Timeout | null = null;
+        let timeoutId: NodeJS.Timeout | null = null;
         let stopped = false;
+        let pollCount = 0;
 
         const stopPolling = () => {
             stopped = true;
-            if (intervalId) { clearInterval(intervalId); intervalId = null; }
+            if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
         };
 
         const fetchData = async () => {
@@ -68,53 +70,73 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
             try {
                 // Fetch Source
                 const sourceRes = await fetchClient(`/sources/${sourceId}`);
+                if (stopped) return;
+
                 if (sourceRes.status === 404) {
-                    // Source was deleted — stop polling immediately
                     stopPolling();
                     return;
                 }
+
                 if (sourceRes.ok) {
                     const sourceData = await sourceRes.json();
+                    if (stopped) return;
                     setSource(sourceData);
                 }
 
                 // Fetch Logs for status updates
                 const logsRes = await fetchClient(`/sources/${sourceId}/logs`);
+                if (stopped) return;
+
                 if (logsRes.status === 404) {
                     stopPolling();
                     return;
                 }
+
                 if (logsRes.ok) {
                     const logsData = await logsRes.json();
+                    if (stopped) return;
                     setLogs(logsData);
 
                     // Check processing state
-                    const hasRunning = logsData.some((l: SourceLog) => l.status === 'running');
+                    const hasRunning = logsData.some((l: SourceLog) => l.status === 'running' || l.status === 'pending');
                     const allDone = logsData.length > 0 && logsData.every(
                         (l: SourceLog) => l.status === 'completed' || l.status === 'failed'
                     );
 
                     if (allDone) {
-                        // Processing finished — no need to keep polling
                         stopPolling();
                         return;
                     }
 
-                    // Poll at 5s when processing, 15s when idle
-                    const pollInterval = hasRunning ? 5000 : 15000;
+                    pollCount++;
+                    // Base intervals: 5s if active, 15s if idle (e.g., waiting to start)
+                    let pollInterval = hasRunning ? 5000 : 15000;
 
-                    // Reset interval if needed
-                    if (intervalId) clearInterval(intervalId);
-                    intervalId = setInterval(fetchData, pollInterval);
+                    // Simple backoff: if we've been polling intensely for a long time (> 12 times = 1 minute of 5s polls)
+                    // increase the interval to avoid spamming the backend. Max 30s.
+                    if (pollCount > 12) {
+                        const backoffFactor = Math.pow(1.5, pollCount - 12);
+                        pollInterval = Math.min(30000, pollInterval * backoffFactor);
+                    }
+
+                    if (timeoutId) clearTimeout(timeoutId);
+                    timeoutId = setTimeout(fetchData, pollInterval);
                 }
             } catch (e) {
                 console.error("Error fetching source details:", e);
+                // On error, try again after a longer delay
+                if (!stopped) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    timeoutId = setTimeout(fetchData, 15000);
+                }
             }
         };
 
         if (isOpen && sourceId) {
             setLoading(true);
-            fetchData().finally(() => setLoading(false));
+            fetchData().finally(() => {
+                if (!stopped) setLoading(false);
+            });
         } else {
             setSource(null);
             setLogs([]);
@@ -125,24 +147,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
         };
     }, [isOpen, sourceId]);
 
-    const handleRunLens = async (lensKey: string) => {
-        if (!source) return;
-        try {
-            await fetchClient("/paper/run-lens", {
-                method: "POST",
-                body: JSON.stringify({
-                    source_id: source.id,
-                    lens_key: lensKey
-                })
-            });
-            // Trigger an immediate re-fetch
-            const res = await fetchClient(`/sources/${source.id}/logs`);
-            const data = await res.json();
-            setLogs(data);
-        } catch (e) {
-            console.error("Failed to run lens", e);
-        }
-    };
+
 
     const handleDelete = async () => {
         if (!source) return;
@@ -204,49 +209,11 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
         }
     };
 
-    const getLensStatusInfo = (lensKey: string) => {
-        // Find the most recent log for this lens
-        // Logs are usually returned chronologically or reverse. Let's find all and sort by created_at desc to be safe
-        const lensLogs = logs.filter(l => l.lens_key === lensKey);
-        lensLogs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-        const latest = lensLogs[0];
-
-        if (!latest) return { status: 'pending' as LensStatus };
-
-        let status: LensStatus = 'pending';
-        if (latest.status === 'running') status = 'running';
-        else if (latest.status === 'completed') status = 'completed';
-        else if (latest.status === 'failed') status = 'failed';
-
-        return {
-            status,
-            durationMs: latest.duration_ms,
-            errorMessage: latest.message,
-            result: source?.source_materials?.[0]?.rich_data?.lenses?.[lensKey]
-        };
-    };
-
     if (!source && !loading) return null;
 
     const paperData = source?.source_materials?.[0]?.rich_data;
     const isArxiv = source?.type === 'ARXIV_PAPER';
     const isSubscription = ['HF_DAILY_PAPERS', 'RSS_FEED', 'AUTHOR_BLOG'].includes(source?.type || '');
-
-    // Defined Default Lenses
-    const defaultLenses = [
-        { key: 'default_summary', name: 'Summary Generation', description: 'Generates a concise summary of the paper.' },
-
-        { key: 'reading_notes', name: 'Reading Notes', description: 'Generates structured Q&A notes for learning.' },
-        { key: 'study_quiz', name: 'Flashcard Generator', description: 'Generates quiz questions and glossary terms.' },
-        { key: 'figure_association', name: 'Figure Association', description: 'Extracts figures and links them to notes.' },
-    ];
-
-    // Combine with suggestions
-    // Filter out default lenses from suggestions to avoid duplicates if any
-    const suggestions = (paperData?.suggestions || []).filter(
-        (s: any) => !defaultLenses.some(dl => dl.key === s.key)
-    );
 
     const handleRetry = async () => {
         if (!source) return;
@@ -338,7 +305,7 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                     TL;DR Summary
                                 </h3>
 
-                                {getLensStatusInfo('default_summary').status === 'running' ? (
+                                {logs.some(l => l.lens_key === 'summary' && l.status === 'running') ? (
                                     <div className="p-8 border border-dashed rounded-lg flex items-center justify-center text-muted-foreground gap-2">
                                         <Loader2 className="w-4 h-4 animate-spin" />
                                         Generating summary...
@@ -364,58 +331,8 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                                 )}
                             </section>
 
-                            {/* Lens Pipeline Section */}
-                            <section className="space-y-4">
-                                <h3 className="text-lg font-semibold">Lens Pipeline</h3>
-
-                                {/* Default Lenses */}
-                                <div className="space-y-3">
-                                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Default Lenses</h4>
-                                    {defaultLenses.map(lens => {
-                                        const info = getLensStatusInfo(lens.key);
-                                        return (
-                                            <LensPipelineCard
-                                                key={lens.key}
-                                                name={lens.name}
-                                                description={lens.description}
-                                                lensKey={lens.key}
-                                                status={info.status}
-                                                durationMs={info.durationMs}
-                                                errorMessage={info.errorMessage}
-                                                result={info.result}
-                                            />
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Suggested Lenses */}
-                                <div className="space-y-3 pt-2">
-                                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Suggested Lenses</h4>
-                                    {suggestions.length > 0 ? (
-                                        suggestions.map((lens: any) => {
-                                            const info = getLensStatusInfo(lens.key);
-                                            return (
-                                                <LensPipelineCard
-                                                    key={lens.key}
-                                                    name={lens.name}
-                                                    description={lens.description}
-                                                    lensKey={lens.key}
-                                                    status={info.status}
-                                                    durationMs={info.durationMs}
-                                                    errorMessage={info.errorMessage}
-                                                    result={info.result}
-                                                    isSuggested={true}
-                                                    onRun={() => handleRunLens(lens.key)}
-                                                />
-                                            );
-                                        })
-                                    ) : (
-                                        <div className="text-sm text-muted-foreground italic">
-                                            No additional lenses suggested.
-                                        </div>
-                                    )}
-                                </div>
-                            </section>
+                            {/* Pipeline Status Section */}
+                            <PipelineStatusSection logs={logs} sourceData={paperData} />
                         </>
                     ) : isSubscription ? (
                         // Subscription Source View

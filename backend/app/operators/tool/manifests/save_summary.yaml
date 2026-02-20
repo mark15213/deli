@@ -1,0 +1,12 @@
+key: save_summary
+name: Save Summary
+description: Persist TL;DR summary to SourceMaterial.rich_data
+input_ports:
+  - key: summary
+    type: text
+    description: Generated summary text
+output_ports:
+  - key: done
+    type: text
+    description: Confirmation message
+handler: app.operators.tool.handlers.save_summary

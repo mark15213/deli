@@ -1,0 +1,15 @@
+key: apply_figure_associations
+name: Apply Figure Associations
+description: Update reading note cards with associated figure image paths
+input_ports:
+  - key: associations
+    type: json
+    description: "Section-to-figure mapping from figure_association LLM operator"
+  - key: saved_paths
+    type: json
+    description: "List of saved static file paths for figures"
+output_ports:
+  - key: updated_count
+    type: text
+    description: Number of cards updated with images
+handler: app.operators.tool.handlers.apply_figure_associations

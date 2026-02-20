@@ -164,7 +164,7 @@ async def get_source(
     """
     Get source by ID.
     """
-    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id)
+    stmt = select(Source).options(selectinload(Source.source_materials), selectinload(Source.user)).where(Source.id == source_id)
     if not is_shared_mode():
         stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)

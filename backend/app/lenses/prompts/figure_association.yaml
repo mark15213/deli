@@ -34,7 +34,7 @@ system_prompt: |
 user_prompt_template: |
   Paper Title: {title}
 
-  {text}
+  {notes}
 
   Based on the reading notes content and figure information provided above, determine which figures belong to which reading note sections.
   

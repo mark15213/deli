@@ -1,0 +1,22 @@
+key: extract_figures
+name: Extract Figures
+description: Extract significant figures/images from a PDF
+input_ports:
+  - key: pdf_bytes
+    type: pdf_bytes
+    description: Raw PDF bytes
+  - key: url
+    type: text
+    description: Source URL (used for arxiv source extraction)
+    required: false
+output_ports:
+  - key: images
+    type: images
+    description: List of image bytes (PNG/JPEG)
+  - key: figure_info
+    type: text
+    description: Text description of figures for LLM context
+  - key: saved_paths
+    type: json
+    description: List of saved static file paths
+handler: app.operators.tool.handlers.extract_figures

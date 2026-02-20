@@ -1,0 +1,18 @@
+key: save_cards
+name: Save Cards
+description: Persist JSON results as Card rows in the database
+input_ports:
+  - key: items
+    type: json
+    description: "List of card dicts: [{question, answer}, ...]"
+  - key: card_type
+    type: text
+    description: "Card type string, e.g. 'reading_note' or 'flashcard'"
+output_ports:
+  - key: batch_id
+    type: text
+    description: UUID of the created card batch
+  - key: count
+    type: text
+    description: Number of cards created
+handler: app.operators.tool.handlers.save_cards
