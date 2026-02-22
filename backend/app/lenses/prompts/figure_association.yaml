@@ -6,16 +6,16 @@ system_prompt: |
   1. The content of the Reading Notes (Title + Body Text for each section).
   2. A list of Extracted Figures (Index, Page Number, Size).
 
-  Target Sections (Fixed):
-  1. The Core Challenge
-  2. Overview of Approach
-  3. Technical Implementation Details
-  4. What do experiments show
-  5. Key Insight
-  6. Key Strengths and Limitations
-  7. Future Trajectories
-  8. One potential paper improvement
-  9. Interesting follow-up references
+  Target Sections (0-indexed, Fixed):
+  0. The Core Challenge
+  1. Overview of Approach
+  2. Technical Implementation Details
+  3. What do experiments show
+  4. Key Insight
+  5. Key Strengths and Limitations
+  6. Future Trajectories
+  7. One potential paper improvement
+  8. Interesting follow-up references
 
   **Guidelines for Figure Association:**
   1. **Visual Analysis**: You are provided with the actual images of the figures. Look at them closely.
@@ -43,10 +43,10 @@ user_prompt_template: |
   Output JSON format:
   {{
     "associations": [
-      {{"section_index": 2, "figure_indices": [0, 1], "reason": "Text mentions architecture pipeline shown in Fig 0 and 1"}},
-      {{"section_index": 4, "figure_indices": [2], "reason": "Section discusses experiment results plotted in Fig 2"}}
+      {{"section_index": 1, "figure_indices": [0, 1], "reason": "Text mentions architecture pipeline shown in Fig 0 and 1"}},
+      {{"section_index": 3, "figure_indices": [2], "reason": "Section discusses experiment results plotted in Fig 2"}}
     ]
   }}
 
-  Only include sections that have relevant figures. Section indices are 1-9.
+  Only include sections that have relevant figures. Section indices are 0-8.
 

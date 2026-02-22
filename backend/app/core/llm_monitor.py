@@ -1,10 +1,14 @@
 # LLM Call Monitoring and Logging
+import os
+import json
 import logging
 import time
+from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models.models import SourceLog
 
 logger = logging.getLogger(__name__)
@@ -125,6 +129,37 @@ class LLMCallLog:
         db.add(log)
         # Don't commit here - let caller handle transaction
 
+    def save_debug_log(self):
+        """Save full un-truncated LLM call details to a local JSON file if enabled."""
+        settings = get_settings()
+        if not settings.llm_debug_logging:
+            return
+            
+        try:
+            log_dir = "logs/llm"
+            os.makedirs(log_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            lens_name = self.lens_key or "unknown"
+            filename = os.path.join(log_dir, f"{timestamp}_{self.model}_{lens_name}.json")
+            
+            debug_data = {
+                "source_id": str(self.source_id) if self.source_id else None,
+                "lens_key": self.lens_key,
+                "model": self.model,
+                "duration_ms": self.duration_ms,
+                "error": self.error,
+                "messages": self.messages,
+                "response_content": self.response_content,
+                "prompt_tokens": self.prompt_tokens,
+                "completion_tokens": self.completion_tokens,
+                "total_tokens": self.total_tokens,
+            }
+            
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(debug_data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Wrote LLM debug log to {filename}")
+        except Exception as e:
+            logger.error(f"Failed to write LLM debug log: {e}")
 
 class LLMMonitor:
     """Context manager for monitoring LLM calls."""
@@ -156,6 +191,9 @@ class LLMMonitor:
 
         # Save to database
         await self.log.save_to_db(self.db)
+
+        # Save debug log if enabled
+        self.log.save_debug_log()
 
         # Log to console
         if self.log.error:

@@ -21,7 +21,7 @@ class FigureAssociationOperator(LLMOperator):
                 "items": {
                     "type": "object",
                     "properties": {
-                        "section_index": {"type": "integer", "minimum": 1, "maximum": 9},
+                        "section_index": {"type": "integer", "minimum": 0, "maximum": 8},
                         "figure_indices": {"type": "array", "items": {"type": "integer"}},
                         "reason": {"type": "string"},
                     },

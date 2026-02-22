@@ -18,7 +18,7 @@ def paper_default() -> Pipeline:
       summarize      → summary → save_summary
       reading_notes  → reading_notes → save_reading_notes
       flashcards     → study_quiz → save_flashcards
-      figures        → extract_figures → optimize_images → figure_association → apply_figure_associations
+      figures        → extract_figures → figure_association → apply_figure_associations
     """
     steps = [
         Step(
@@ -63,7 +63,6 @@ def paper_default() -> Pipeline:
             position={"x": 300, "y": 540},
             operators=[
                 OpRef(id="extract_figures", operator_key="extract_figures"),
-                OpRef(id="optimize_images", operator_key="optimize_images"),
                 OpRef(id="figure_association", operator_key="figure_association"),
                 OpRef(id="apply_figure_associations", operator_key="apply_figure_associations"),
             ],
@@ -80,10 +79,9 @@ def paper_default() -> Pipeline:
         # fetch → extract_figures
         Edge(id="e4", source_op="pdf_fetch", source_port="pdf_bytes", target_op="extract_figures", target_port="pdf_bytes"),
         Edge(id="e4b", source_op="__input__", source_port="url", target_op="extract_figures", target_port="url"),
-        # extract_figures → optimize_images
-        Edge(id="e5", source_op="extract_figures", source_port="images", target_op="optimize_images", target_port="images"),
-        # optimize_images + reading notes -> figure_association
-        Edge(id="e6", source_op="optimize_images", source_port="images", target_op="figure_association", target_port="images"),
+        # extract_figures → figure_association
+        Edge(id="e5", source_op="extract_figures", source_port="images", target_op="figure_association", target_port="images"),
+        # reading notes -> figure_association
         Edge(id="e7", source_op="reading_notes", source_port="notes", target_op="figure_association", target_port="notes"),
         # summary → save_summary
         Edge(id="e8", source_op="summary", source_port="summary", target_op="save_summary", target_port="summary"),

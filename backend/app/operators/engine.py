@@ -90,7 +90,7 @@ class PipelineEngine:
         pipeline: Pipeline,
         initial_inputs: dict[str, Any],
         context: RunContext,
-    ) -> dict[str, dict[str, Any]]:
+    ) -> tuple[dict[str, dict[str, Any]], set[str]]:
         """
         Run the full pipeline.
 
@@ -103,7 +103,7 @@ class PipelineEngine:
 
         Returns
         -------
-        Mapping of ``op_id → {port_key: value}`` for every executed operator.
+        Tuple of (Mapping of ``op_id → {port_key: value}``, Set of failed op IDs)
         """
         # Build lookup tables
         op_map, op_to_step = self._build_op_map(pipeline)
@@ -247,7 +247,7 @@ class PipelineEngine:
                 pipeline.name, len(failed_ops), failed_ops,
             )
 
-        return op_outputs
+        return op_outputs, failed_ops
 
     # ------------------------------------------------------------------
     # Build lookup maps
@@ -396,16 +396,21 @@ class PipelineEngine:
             start = time.time()
 
             try:
-                result = await operator.execute(merged_inputs, local_context)
+                # Enforce a 10-minute maximum runtime per operator
+                result = await asyncio.wait_for(
+                    operator.execute(merged_inputs, local_context),
+                    timeout=600.0
+                )
             except Exception as exc:
                 elapsed_ms = int((time.time() - start) * 1000)
+                error_msg = f"Timeout error (exceeded 600s)" if isinstance(exc, asyncio.TimeoutError) else str(exc)
                 logger.error(
                     "✗ Op '%s' — operator '%s' failed in %d ms: %s",
-                    op_ref.id, op_ref.operator_key, elapsed_ms, exc,
+                    op_ref.id, op_ref.operator_key, elapsed_ms, error_msg,
                 )
                 await self._update_lens_log(
                     local_context, op_ref.id, "failed",
-                    message=str(exc), duration_ms=elapsed_ms,
+                    message=error_msg, duration_ms=elapsed_ms,
                 )
                 await local_context.db.commit()
                 raise

@@ -12,6 +12,7 @@ import time
 from abc import abstractmethod
 from typing import Any, Optional
 
+import httpx
 from openai import AsyncOpenAI
 
 from app.core.config import get_settings
@@ -51,9 +52,15 @@ class LLMOperator(OperatorBase):
         messages = self._render_messages(config, inputs)
 
         settings = get_settings()
+        
+        # Explicitly configure comprehensive timeouts for network I/O
+        # (connect: 15s, read: 600s, write: 600s, pool: 15s)
+        http_timeout = httpx.Timeout(600.0, connect=15.0, pool=15.0)
+        
         client = AsyncOpenAI(
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
+            timeout=http_timeout,
         )
         model = settings.llm_model
 
@@ -71,12 +78,14 @@ class LLMOperator(OperatorBase):
             retry_if_exception,
             before_sleep_log,
         )
-        from openai import APIStatusError, AuthenticationError
+        from openai import APIStatusError, AuthenticationError, APIConnectionError
 
         def _is_retryable(exc: BaseException) -> bool:
-            """Only retry on 429 (rate limit) and 5xx (server error)."""
+            """Only retry on 429, 5xx, or network connection errors (like timeouts)."""
             if isinstance(exc, AuthenticationError):
                 return False
+            if isinstance(exc, APIConnectionError):
+                return True
             if isinstance(exc, APIStatusError):
                 return exc.status_code == 429 or exc.status_code >= 500
             return False

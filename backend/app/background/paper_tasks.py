@@ -131,19 +131,33 @@ async def _run_pipeline(session, source_id: UUID):
     initial_inputs = {"url": url}
 
     engine = PipelineEngine()
-    await engine.run(pipeline, initial_inputs, context)
+    op_outputs, failed_ops = await engine.run(pipeline, initial_inputs, context)
 
-    # 6. Mark completed --------------------------------------------------------
+    # 6. Mark completed or failed ----------------------------------------------
     await session.execute(select(Source).where(Source.id == source_id))  # refresh
-    source.status = "COMPLETED"
+    
+    if failed_ops:
+        source.status = "FAILED"
+        source.error_log = f"Pipeline failed on operators: {', '.join(failed_ops)}"
+        log_event_type = "sync_failed"
+        log_status = "failed"
+        log_message = f"Source processing failed on operators: {', '.join(failed_ops)}"
+    else:
+        source.status = "COMPLETED"
+        log_event_type = "sync_completed"
+        log_status = "completed"
+        log_message = "Source processing finished successfully"
 
     log = SourceLog(
         source_id=source_id,
-        event_type="sync_completed",
-        status="completed",
-        message="Source processing finished",
+        event_type=log_event_type,
+        status=log_status,
+        message=log_message,
     )
     session.add(log)
     await session.commit()
 
-    logger.info("Finished processing source %s", source_id)
+    if failed_ops:
+        logger.error("Finished processing source %s with errors", source_id)
+    else:
+        logger.info("Finished processing source %s", source_id)

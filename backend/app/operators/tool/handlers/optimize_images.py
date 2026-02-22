@@ -21,18 +21,18 @@ async def handle(inputs: dict[str, Any], context: RunContext) -> dict[str, Any]:
 
     for img_bytes in raw_images:
         try:
-            img = Image.open(io.BytesIO(img_bytes))
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
+            with Image.open(io.BytesIO(img_bytes)) as img:
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
 
-            w, h = img.size
-            if w > MAX_DIM or h > MAX_DIM:
-                ratio = min(MAX_DIM / w, MAX_DIM / h)
-                img = img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
+                w, h = img.size
+                if w > MAX_DIM or h > MAX_DIM:
+                    ratio = min(MAX_DIM / w, MAX_DIM / h)
+                    img = img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
 
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85)
-            optimised.append(buf.getvalue())
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=85)
+                optimised.append(buf.getvalue())
         except Exception:
             logger.warning("Failed to optimise image, skipping", exc_info=True)
 
