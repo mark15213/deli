@@ -47,20 +47,25 @@ export async function createSource(data: Partial<Source>): Promise<Source> {
 
 export interface UploadResult {
     status: string;
-    source_material_id: string;
+    is_preview?: boolean;
+    source_material_id?: string;
     cards_created: number;
     cards: Array<{
         id: string;
         type: string;
         question: string;
+        answer?: string;
+        options?: string[];
+        explanation?: string;
     }>;
 }
 
-export async function uploadDocument(sourceId: string, file: File): Promise<UploadResult> {
+export async function uploadDocument(sourceId: string, file: File, preview: boolean = false): Promise<UploadResult> {
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetchClient(`/sources/${sourceId}/upload`, {
+    const url = `/sources/${sourceId}/upload${preview ? '?preview=true' : ''}`;
+    const res = await fetchClient(url, {
         method: "POST",
         body: formData,
     });

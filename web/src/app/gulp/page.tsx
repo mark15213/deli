@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2, Coffee } from "lucide-react"
+import { ArrowLeft, Loader2, Coffee, Sparkles } from "lucide-react"
 import { GulpCard } from "@/components/study/GulpCard"
 import { getGulpFeed, bookmarkCard, unbookmarkCard, submitReview, GulpCard as GulpCardType } from "@/lib/api/study"
+import { GulpModeSwitch } from "./_components/GulpModeSwitch"
+
+type GulpMode = 'review' | 'explore' | 'mixed' | 'deep_dive'
 
 export default function GulpPage() {
     const router = useRouter()
@@ -14,11 +17,22 @@ export default function GulpPage() {
     const [currentIndex, setCurrentIndex] = useState(0)
     const [hasMore, setHasMore] = useState(false)
     const [total, setTotal] = useState(0)
+    const [mode, setMode] = useState<GulpMode>('mixed')
+    const [deepDiveSourceId, setDeepDiveSourceId] = useState<string | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    const fetchFeed = useCallback(async (offset = 0) => {
+    // Load mode from localStorage on mount
+    useEffect(() => {
+        const savedMode = localStorage.getItem('gulp_mode') as GulpMode
+        if (savedMode && ['review', 'explore', 'mixed', 'deep_dive'].includes(savedMode)) {
+            setMode(savedMode)
+        }
+    }, [])
+
+    const fetchFeed = useCallback(async (offset = 0, newMode?: GulpMode) => {
         try {
             setLoading(true)
+            const feedMode = newMode || mode
             const feed = await getGulpFeed(30, offset)
             if (offset === 0) {
                 setCards(feed.cards)
@@ -33,7 +47,7 @@ export default function GulpPage() {
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [mode])
 
     useEffect(() => {
         fetchFeed()
@@ -68,6 +82,13 @@ export default function GulpPage() {
         return () => observer.disconnect()
     }, [cards, hasMore, fetchFeed])
 
+    const handleModeChange = (newMode: GulpMode) => {
+        setMode(newMode)
+        localStorage.setItem('gulp_mode', newMode)
+        setCurrentIndex(0)
+        fetchFeed(0, newMode)
+    }
+
     const handleBookmark = async (cardId: string) => {
         try {
             await bookmarkCard(cardId)
@@ -93,55 +114,82 @@ export default function GulpPage() {
         }
     }
 
+    const handleSkip = () => {
+        const nextEl = containerRef.current?.querySelector(`[data-index="${currentIndex + 1}"]`)
+        if (nextEl) {
+            nextEl.scrollIntoView({ behavior: "smooth" })
+        }
+    }
+
+    const handleDeepDive = (sourceMaterialId: string) => {
+        setMode('deep_dive')
+        setDeepDiveSourceId(sourceMaterialId)
+        // TODO: Fetch cards for this source only
+    }
+
     // Empty state
     if (!loading && cards.length === 0) {
         return (
-            <div className="h-screen flex flex-col items-center justify-center gap-6 px-8 bg-background">
-                <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center">
-                    <Coffee className="h-10 w-10 text-muted-foreground" />
+            <div className="h-screen flex flex-col items-center justify-center gap-6 px-8 bg-gradient-to-br from-background via-background to-primary/5">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full animate-pulse" />
+                    <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center backdrop-blur-sm border border-primary/20">
+                        <Coffee className="h-12 w-12 text-primary" />
+                    </div>
                 </div>
-                <div className="text-center space-y-2">
-                    <h2 className="text-2xl font-bold">Nothing to gulp yet</h2>
-                    <p className="text-muted-foreground max-w-sm">
-                        Subscribe to some decks and start reading papers. Cards will appear here when they&rsquo;re ready for review.
+                <div className="text-center space-y-3 max-w-md">
+                    <h2 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                        Nothing to gulp yet
+                    </h2>
+                    <p className="text-muted-foreground leading-relaxed">
+                        Subscribe to some decks and start reading papers. Cards will appear here when they're ready for review.
                     </p>
                 </div>
                 <button
                     onClick={() => router.push("/study")}
-                    className="px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-all"
+                    className="group relative px-8 py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold hover:shadow-lg hover:shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5"
                 >
-                    Go to Learn
+                    <span className="relative z-10">Go to Learn</span>
+                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary to-primary/80 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
             </div>
         )
     }
 
     return (
-        <div className="h-screen w-full flex flex-col bg-background overflow-hidden">
-            {/* Top bar */}
-            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/30 bg-background/80 backdrop-blur-md z-10">
+        <div className="h-screen w-full flex flex-col bg-gradient-to-br from-background via-background to-primary/5 overflow-hidden">
+            {/* Top bar with mode switcher */}
+            <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border/30 bg-background/80 backdrop-blur-xl z-10">
                 <button
                     onClick={() => router.push("/study")}
-                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group"
                 >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back
+                    <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
+                    <span className="font-medium">Back</span>
                 </button>
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                        🥤 Gulping
-                    </span>
-                    <span className="text-xs text-muted-foreground">
+
+                <GulpModeSwitch mode={mode} onModeChange={handleModeChange} />
+
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-sm font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                            Gulping
+                        </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground font-medium tabular-nums">
                         {currentIndex + 1} / {cards.length}
                     </span>
                 </div>
-                <div className="w-16" /> {/* Spacer for centering */}
             </div>
 
             {/* Loading */}
             {loading && cards.length === 0 && (
                 <div className="flex-1 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <div className="flex flex-col items-center gap-4">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-sm text-muted-foreground">Loading your feed...</p>
+                    </div>
                 </div>
             )}
 
@@ -163,6 +211,8 @@ export default function GulpPage() {
                             onBookmark={handleBookmark}
                             onUnbookmark={handleUnbookmark}
                             onMarkLearned={handleMarkLearned}
+                            onSkip={handleSkip}
+                            onDeepDive={handleDeepDive}
                         />
                     </div>
                 ))}
@@ -176,16 +226,17 @@ export default function GulpPage() {
             </div>
 
             {/* Progress dots */}
-            <div className="fixed right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 z-20">
+            <div className="fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-20">
                 {cards.slice(Math.max(0, currentIndex - 3), Math.min(cards.length, currentIndex + 4)).map((c, i) => {
                     const realIdx = Math.max(0, currentIndex - 3) + i
                     return (
                         <div
                             key={c.id}
-                            className={`w-1.5 rounded-full transition-all duration-300 ${realIdx === currentIndex
-                                ? "h-6 bg-primary"
-                                : "h-1.5 bg-muted-foreground/30"
-                                }`}
+                            className={`rounded-full transition-all duration-300 ${
+                                realIdx === currentIndex
+                                    ? "w-2 h-8 bg-primary shadow-lg shadow-primary/50"
+                                    : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                            }`}
                         />
                     )
                 })}
