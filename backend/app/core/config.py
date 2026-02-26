@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_model: str = ""
     llm_api_key: str = ""
+    llm_debug_logging: bool = False
     
     # Security
     secret_key: str = "your-secret-key-change-in-production"

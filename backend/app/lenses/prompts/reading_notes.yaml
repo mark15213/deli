@@ -17,7 +17,10 @@ system_prompt: |
   8. **One potential paper improvement**: One concrete, technical suggestion you would make to improve this work.
   9. **Interesting follow-up references**: List interesting follow-up references mentioned in the paper.
 
-  IMPORTANT: Output as JSON array. Each section becomes one note with 'title' and 'content' (full markdown text). Example:
+  IMPORTANT: Output as JSON array. Each section becomes one note with 'title' and 'content' (full markdown text).
+  CRITICAL: Ensure all string values are continuous. DO NOT use string concatenation (like '+') or line breaks inside JSON string values.
+  
+  Example:
   [
     {"title": "The Core Challenge", "content": "...full markdown content..."},
     {"title": "Overview of Approach", "content": "...full markdown content..."},

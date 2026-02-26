@@ -216,11 +216,15 @@ class ReviewLog(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"), index=True)
     
-    grade: Mapped[int] = mapped_column(Integer) # 1-4
+    rating: Mapped[int] = mapped_column(Integer) # 1-4
     
     state_before: Mapped[Optional[FSRSState]] = mapped_column(Enum(FSRSState, values_callable=lambda x: [e.value for e in x]), nullable=True)
     stability_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     difficulty_before: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    state_after: Mapped[Optional[FSRSState]] = mapped_column(Enum(FSRSState, values_callable=lambda x: [e.value for e in x]), nullable=True)
+    stability_after: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    difficulty_after: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     review_duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -247,6 +251,32 @@ class CardBookmark(Base):
     # Relationships
     user: Mapped["User"] = relationship(back_populates="bookmarks")
     card: Mapped["Card"] = relationship(back_populates="bookmarks")
+
+
+class PipelineTemplate(Base):
+    """
+    Saved pipeline DAG definition.
+
+    System presets (is_system=True) are seeded on startup.
+    Users can clone presets or create custom pipelines.
+    """
+    __tablename__ = "pipeline_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Full DAG definition: {nodes: [...], edges: [...]}
+    definition: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User")
 
 
 class Source(Base):
@@ -308,8 +338,11 @@ class SourceLog(Base):
     # Event type: 'lens_started', 'lens_completed', 'lens_failed', 'sync_started', 'sync_completed', 'error'
     event_type: Mapped[str] = mapped_column(String(50))
     
-    # Lens key if applicable (e.g., 'default_summary', 'reading_notes')
+    # Lens / operator key if applicable (e.g., 'default_summary', 'reading_notes')
     lens_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    # Step key if applicable (pipeline step grouping)
+    step_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # Status: 'running', 'completed', 'failed'
     status: Mapped[str] = mapped_column(String(20))

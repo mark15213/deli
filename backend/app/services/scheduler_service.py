@@ -149,7 +149,7 @@ class SchedulerService:
         log = ReviewLog(
             user_id=user_id,
             card_id=card_id,
-            grade=rating,
+            rating=rating,
             state_before=self.FSRS_INT_TO_STATE.get(state_before_int, FSRSState.NEW),
             stability_before=stability_before,
             difficulty_before=difficulty_before,

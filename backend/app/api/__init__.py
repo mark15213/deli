@@ -30,3 +30,6 @@ api_router.include_router(bookmarks_router)
 
 from app.api.admin import router as admin_router
 api_router.include_router(admin_router)
+
+from app.api.pipelines import router as pipelines_router
+api_router.include_router(pipelines_router)

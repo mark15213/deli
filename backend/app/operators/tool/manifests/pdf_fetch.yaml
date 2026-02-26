@@ -1,0 +1,15 @@
+key: pdf_fetch
+name: Fetch PDF
+description: Download PDF from URL and extract text content
+input_ports:
+  - key: url
+    type: text
+    description: PDF URL (e.g. arxiv abs/pdf link)
+output_ports:
+  - key: text
+    type: text
+    description: Extracted text from PDF
+  - key: pdf_bytes
+    type: pdf_bytes
+    description: Raw PDF bytes
+handler: app.operators.tool.handlers.pdf_fetch

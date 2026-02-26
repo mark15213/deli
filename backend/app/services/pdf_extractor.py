@@ -88,6 +88,24 @@ def extract_figures_from_pdf(pdf_bytes: bytes, min_width: int = MIN_IMAGE_WIDTH,
                     image_bytes = pix.tobytes("png")
                     image_ext = "png"
                     
+                    file_size = len(image_bytes)
+                    if file_size > 3 * 1024 * 1024: # 3MB limit for PNGs
+                        logger.debug(f"Skipping extracted PNG image on page {page_num} because it is larger than 3MB ({file_size} bytes)")
+                        pix = None
+                        continue
+
+                    # Convert ALL PNGs to JPEG
+                    try:
+                        from PIL import Image as PILImage
+                        img = PILImage.open(io.BytesIO(image_bytes))
+                        if img.mode in ('RGBA', 'P'):
+                            img = img.convert('RGB')
+                        out_io = io.BytesIO()
+                        img.save(out_io, format='JPEG', quality=85)
+                        image_bytes = out_io.getvalue()
+                        image_ext = 'jpg'
+                    except Exception as e:
+                        logger.warning(f"Failed to convert PDF image to JPEG {img_index} on page {page_num}: {e}")
                     pix = None  # Free memory
                     
                     figures.append(ExtractedFigure(
@@ -253,9 +271,9 @@ def extract_figures_from_arxiv_source(arxiv_id: str) -> List[ExtractedFigure]:
                     
                     file_path = Path(root) / file
                     
-                    # Skip large files (> 5MB, likely full papers or raw photos)
-                    if file_path.stat().st_size > 5 * 1024 * 1024:
-                        logger.debug(f"Skipping large file: {file}")
+                    # Skip excessively large files (> 15MB)
+                    if file_path.stat().st_size > 15 * 1024 * 1024:
+                        logger.debug(f"Skipping excessively large file: {file}")
                         continue
                     
                     # LaTeX filter
@@ -263,35 +281,61 @@ def extract_figures_from_arxiv_source(arxiv_id: str) -> List[ExtractedFigure]:
                         logger.debug(f"Skipping unreferenced file: {file}")
                         continue
 
+                    # Filter out logos
+                    if "logo" in file.lower():
+                        logger.debug(f"Skipping logo file: {file}")
+                        continue
+
                     try:
+                        from PIL import Image as PILImage
                         if ext == '.pdf':
                             # Convert first page of PDF figure to PNG
                             doc = fitz.open(file_path)
                             if len(doc) > 0:
                                 page = doc[0]
                                 pix = page.get_pixmap(dpi=300)
-                                image_bytes = pix.tobytes("png")
-                                width, height = pix.width, pix.height
+                                current_image_bytes = pix.tobytes("png")
                                 doc.close()
+                                ext = '.png'
                             else:
                                 doc.close()
                                 continue
                         else:
                             # PNG/JPEG: read bytes directly
-                            image_bytes = file_path.read_bytes()
-                            # Get dimensions using PIL
-                            from PIL import Image as PILImage
-                            img = PILImage.open(io.BytesIO(image_bytes))
+                            current_image_bytes = file_path.read_bytes()
+                            
+                        file_size = len(current_image_bytes)
+                        
+                        # Size filter
+                        if ext == '.png' and file_size > 3 * 1024 * 1024:
+                            logger.debug(f"Skipping PNG {file} because it is larger than 3MB ({file_size} bytes)")
+                            continue
+                        if ext in ['.jpg', '.jpeg'] and file_size > 1 * 1024 * 1024:
+                            logger.debug(f"Skipping JPEG {file} because it is larger than 1MB ({file_size} bytes)")
+                            continue
+
+                        # Get dimensions using PIL
+                        with PILImage.open(io.BytesIO(current_image_bytes)) as img:
                             width, height = img.size
-                            img.close()
+                            # Compress/Convert all PNGs to JPEG
+                            if ext == '.png':
+                                try:
+                                    if img.mode in ('RGBA', 'P'):
+                                        img = img.convert('RGB')
+                                    out_io = io.BytesIO()
+                                    img.save(out_io, format='JPEG', quality=85)
+                                    current_image_bytes = out_io.getvalue()
+                                    ext = '.jpg'
+                                except Exception as e:
+                                    logger.warning(f"Failed to convert PNG to JPEG {file}: {e}")
                         
                         figures.append(ExtractedFigure(
                             index=figure_index,
                             page_num=1,
-                            image_bytes=image_bytes,
+                            image_bytes=current_image_bytes,
                             width=width,
                             height=height,
-                            format="png" if ext == '.pdf' else ext.lstrip('.'),
+                            format=ext.lstrip('.'),
                             caption=file  # Use filename as caption/id
                         ))
                         figure_index += 1

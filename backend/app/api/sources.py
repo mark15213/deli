@@ -164,7 +164,7 @@ async def get_source(
     """
     Get source by ID.
     """
-    stmt = select(Source).options(selectinload(Source.source_materials)).where(Source.id == source_id)
+    stmt = select(Source).options(selectinload(Source.source_materials), selectinload(Source.user)).where(Source.id == source_id)
     if not is_shared_mode():
         stmt = stmt.where(Source.user_id == current_user.id)
     result = await db.execute(stmt)
@@ -475,10 +475,12 @@ async def upload_document(
     db: AsyncSession = Depends(deps.get_db),
     source_id: UUID,
     file: UploadFile = File(...),
+    preview: bool = False,
     current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Upload a document (CSV, MD, TXT) to parse into cards.
+    If preview is True, returns parsed cards without saving to DB.
     Cards are created with PENDING status for user review.
     """
     # Verify source exists and belongs to user
@@ -502,6 +504,25 @@ async def upload_document(
     
     if not parsed_cards:
         raise HTTPException(status_code=400, detail="No cards could be parsed from the document")
+        
+    if preview:
+        mocked_cards = []
+        for pc in parsed_cards:
+            mocked_cards.append({
+                "id": f"preview_{uuid.uuid4().hex[:8]}",
+                "type": pc.type,
+                "question": pc.question,
+                "answer": pc.answer,
+                "options": pc.options,
+                "explanation": pc.explanation,
+                "tags": pc.tags
+            })
+        return {
+            "status": "preview",
+            "is_preview": True,
+            "cards_created": len(mocked_cards),
+            "cards": mocked_cards,
+        }
     
     # Create SourceMaterial for tracking
     source_material = SourceMaterial(

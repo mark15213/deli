@@ -32,6 +32,15 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("SELECT 1"))
     print("Database connection pool pre-warmed.")
     
+    # Seed system pipeline templates (always, not just dev mode)
+    try:
+        from app.core.seed_pipelines import seed_system_pipelines
+        async with async_session_maker() as db:
+            await seed_system_pipelines(db)
+        print("System pipeline templates seeded.")
+    except Exception as e:
+        print(f"Startup warning: Failed to seed pipeline templates: {e}")
+    
     # Dev mode: seed test data
     if settings.dev_mode:
         print("Dev mode enabled - seeding test data...")
