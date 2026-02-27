@@ -18,6 +18,19 @@ async def handle(inputs: dict[str, Any], context: RunContext) -> dict[str, Any]:
     associations = inputs.get("associations", [])
     saved_paths = inputs.get("saved_paths", [])
 
+    if not saved_paths:
+        from app.core.config import get_settings
+        from pathlib import Path
+        import re
+        settings = get_settings()
+        source_dir = Path(settings.storage_dir) / "images" / str(context.source_id)
+        if source_dir.exists():
+            def sort_key(p):
+                match = re.search(r"(\d+)", p.name)
+                return int(match.group(1)) if match else 999
+            files = sorted([f for f in source_dir.iterdir() if f.is_file() and not f.name.startswith('.')], key=sort_key)
+            saved_paths = [f"/static/images/{context.source_id}/{f.name}" for f in files]
+
     if not associations or not saved_paths:
         logger.info("No associations or saved_paths provided, nothing to apply")
         return {"updated_count": "0"}

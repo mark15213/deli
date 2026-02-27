@@ -44,3 +44,39 @@ class FigureAssociationOperator(LLMOperator):
         if isinstance(content, dict) and "associations" in content:
             return {"associations": content["associations"]}
         return {"associations": content}
+
+    async def execute(self, inputs: dict[str, Any], context: "RunContext") -> dict[str, Any]:
+        if "notes" not in inputs:
+            # Support pipeline resumption where reading_notes step was skipped
+            import uuid
+            from sqlalchemy import select
+            from app.models.models import Card
+
+            stmt = (
+                select(Card)
+                .where(
+                    Card.source_material_id == uuid.UUID(context.source_material_id),
+                    Card.type == "reading_note",
+                )
+                .order_by(Card.batch_index)
+            )
+            cards = (await context.db.execute(stmt)).scalars().all()
+            if cards:
+                inputs["notes"] = [c.content for c in cards]
+            else:
+                inputs["notes"] = []
+
+        if not inputs.get("images"):
+            from app.core.config import get_settings
+            from pathlib import Path
+            import re
+            settings = get_settings()
+            source_dir = Path(settings.storage_dir) / "images" / str(context.source_id)
+            if source_dir.exists():
+                def sort_key(p):
+                    match = re.search(r"(\d+)", p.name)
+                    return int(match.group(1)) if match else 999
+                files = sorted([f for f in source_dir.iterdir() if f.is_file() and not f.name.startswith('.')], key=sort_key)
+                inputs["images"] = [f.read_bytes() for f in files]
+
+        return await super().execute(inputs, context)

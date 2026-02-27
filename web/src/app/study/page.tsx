@@ -30,7 +30,7 @@ export default function StudyPage() {
         try {
             setDeckLoading(true)
             setDeckError(null)
-            const data = await getStudyQueue(20, deckId)
+            const data = await getStudyQueue(1000, deckId)
             setQueue(data)
         } catch (e) {
             console.error("Failed to fetch study queue:", e)

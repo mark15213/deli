@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { ArrowLeft, ExternalLink, BookOpen, CheckCircle2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, ExternalLink, BookOpen, CheckCircle2, Pencil, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NoteCard } from "./NoteCard"
 import { FlashcardView } from "./FlashcardView"
@@ -16,6 +17,7 @@ interface PaperCardReaderProps {
 }
 
 export function PaperCardReader({ paper, onBack, onComplete }: PaperCardReaderProps) {
+    const router = useRouter()
     const [currentIndex, setCurrentIndex] = useState(0)
     const [completed, setCompleted] = useState(false)
 
@@ -147,16 +149,27 @@ export function PaperCardReader({ paper, onBack, onComplete }: PaperCardReaderPr
                     </p>
                 </div>
 
-                {paper.source_url && (
-                    <a
-                        href={paper.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground transition-colors"
+                <div className="flex items-center gap-1">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.push(`/study/edit/${paper.source_id}`)}
+                        className="gap-1.5 text-muted-foreground hover:text-foreground"
                     >
-                        <ExternalLink className="h-4 w-4" />
-                    </a>
-                )}
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline text-xs">Edit</span>
+                    </Button>
+                    {paper.source_url && (
+                        <a
+                            href={paper.source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground transition-colors p-2"
+                        >
+                            <ExternalLink className="h-4 w-4" />
+                        </a>
+                    )}
+                </div>
             </div>
 
             {/* Progress bar */}

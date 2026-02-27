@@ -8,6 +8,7 @@ input_ports:
   - key: saved_paths
     type: json
     description: "List of saved static file paths for figures"
+    required: false
 output_ports:
   - key: updated_count
     type: text

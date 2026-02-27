@@ -14,6 +14,9 @@ from app.models.models import (
     Source,
     SourceLog,
     card_decks,
+    SourceEdit,
+    SourceAnnotation,
+    ShareLink,
 )
 
 __all__ = [
@@ -31,4 +34,7 @@ __all__ = [
     "Source",
     "SourceLog",
     "card_decks",
+    "SourceEdit",
+    "SourceAnnotation",
+    "ShareLink",
 ]
