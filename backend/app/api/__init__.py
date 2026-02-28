@@ -33,3 +33,9 @@ api_router.include_router(admin_router)
 
 from app.api.pipelines import router as pipelines_router
 api_router.include_router(pipelines_router)
+
+from app.api.editor import router as editor_router
+api_router.include_router(editor_router)
+
+from app.api.editor import shared_router
+api_router.include_router(shared_router)

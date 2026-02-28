@@ -41,9 +41,11 @@ type StepStatus = "pending" | "running" | "completed" | "failed"
 interface PipelineStatusSectionProps {
     logs: SourceLog[]
     sourceData?: any
+    onRetry?: () => void
+    syncing?: boolean
 }
 
-export function PipelineStatusSection({ logs, sourceData }: PipelineStatusSectionProps) {
+export function PipelineStatusSection({ logs, sourceData, onRetry, syncing }: PipelineStatusSectionProps) {
     const router = useRouter()
     const [pipeline, setPipeline] = useState<PipelineTemplate | null>(null)
     const [loading, setLoading] = useState(true)
@@ -180,6 +182,8 @@ export function PipelineStatusSection({ logs, sourceData }: PipelineStatusSectio
                             totalOps={stepInfo.totalOps}
                             message={stepInfo.message}
                             logs={logs}
+                            onRetry={onRetry}
+                            syncing={syncing}
                         />
                     )
                 })}
@@ -197,6 +201,8 @@ function StepStatusCard({
     totalOps,
     message,
     logs,
+    onRetry,
+    syncing,
 }: {
     step: StepDef
     stepStatus: StepStatus
@@ -204,6 +210,8 @@ function StepStatusCard({
     totalOps: number
     message?: string | null
     logs: SourceLog[]
+    onRetry?: () => void
+    syncing?: boolean
 }) {
     const [expanded, setExpanded] = useState(false)
 
@@ -233,7 +241,7 @@ function StepStatusCard({
             icon: <XCircle className="h-4 w-4 text-red-500" />,
             badge: "bg-red-500/10 text-red-500",
             border: "border-red-500/30",
-            bg: "bg-red-500/[0.02]",
+            bg: "bg-red-500/[0.02] border-red-500/50",
             label: "Failed",
         },
     }[stepStatus]
@@ -282,10 +290,25 @@ function StepStatusCard({
                 </span>
             </div>
 
-            {/* Error message for failed steps */}
-            {stepStatus === "failed" && message && !expanded && (
-                <div className="px-4 pb-2 -mt-1">
-                    <p className="text-[11px] text-red-500 truncate">{message}</p>
+            {/* Error message and Retry button for failed steps */}
+            {stepStatus === "failed" && !expanded && (
+                <div className="px-4 pb-3 -mt-1 flex items-center justify-between gap-4">
+                    <p className="text-[11px] text-red-500 truncate flex-1">{message || "Pipeline step failed"}</p>
+                    {onRetry && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRetry();
+                            }}
+                            disabled={syncing}
+                        >
+                            {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                            Retry Step
+                        </Button>
+                    )}
                 </div>
             )}
 
@@ -301,6 +324,20 @@ function StepStatusCard({
                             <pre className="text-[10px] text-red-600 dark:text-red-400 whitespace-pre-wrap font-mono leading-relaxed">
                                 {message}
                             </pre>
+                        </div>
+                    )}
+                    {stepStatus === "failed" && onRetry && (
+                        <div className="mt-2 pt-2 border-t border-red-100 dark:border-red-900/30 flex justify-end">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={onRetry}
+                                disabled={syncing}
+                            >
+                                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                Retry Step
+                            </Button>
                         </div>
                     )}
                 </div>
@@ -362,9 +399,9 @@ function OperatorRow({ op, logs }: { op: OpRefDef; logs: SourceLog[] }) {
 
             {/* Status text */}
             <span className={`text-[10px] shrink-0 ${status === "completed" ? "text-green-600" :
-                    status === "failed" ? "text-red-500" :
-                        status === "running" ? "text-blue-500" :
-                            "text-muted-foreground"
+                status === "failed" ? "text-red-500" :
+                    status === "running" ? "text-blue-500" :
+                        "text-muted-foreground"
                 }`}>
                 {status}
             </span>

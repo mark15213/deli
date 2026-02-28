@@ -332,7 +332,12 @@ export function SourceDetailDrawer({ isOpen, onClose, sourceId, onDeleted }: Sou
                             </section>
 
                             {/* Pipeline Status Section */}
-                            <PipelineStatusSection logs={logs} sourceData={paperData} />
+                            <PipelineStatusSection
+                                logs={logs}
+                                sourceData={paperData}
+                                onRetry={handleRetry}
+                                syncing={syncing}
+                            />
                         </>
                     ) : isSubscription ? (
                         // Subscription Source View

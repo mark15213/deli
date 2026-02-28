@@ -133,7 +133,7 @@ router = APIRouter(prefix="/study", tags=["study"])
 
 @router.get("/queue", response_model=List[StudyCard])
 async def get_study_queue(
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(1000, ge=1, le=2000),
     deck_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -229,17 +229,11 @@ async def get_study_queue(
         progress_result = await db.execute(progress_stmt)
         progress_map = {p.card_id: p for p in progress_result.scalars().all()}
     
-    # Filter to cards that are due
+    # Filter to due cards (or in this case, all cards as requested by user to start from beginning)
     due_cards = []
     for card in all_cards:
-        progress = progress_map.get(card.id)
-        if progress is None:
-            # New card - add to queue
-            due_cards.append(card)
-        elif progress.due_date <= now:
-            # Due for review
-            due_cards.append(card)
-        
+        # Bypass due_date check to allow reviewing all cards from the start
+        due_cards.append(card)
         if len(due_cards) >= limit:
             break
     # Calculate batch_total for cards with batch_id
@@ -316,7 +310,7 @@ async def get_study_papers(
             selectinload(Card.source_material).selectinload(SourceMaterial.source)
         )
         .order_by(Card.created_at.desc())
-        .limit(200)
+        .limit(1000)
     )
     cards_result = await db.execute(cards_stmt)
     raw_cards = list({c.id: c for c in cards_result.scalars().all()}.values())
@@ -332,12 +326,10 @@ async def get_study_papers(
         progress_result = await db.execute(progress_stmt)
         progress_map = {p.card_id: p for p in progress_result.scalars().all()}
     
-    # Filter to due cards
+    # Filter to due cards (bypass SRS to show all papers and their cards)
     due_cards = []
     for card in raw_cards:
-        progress = progress_map.get(card.id)
-        if progress is None or progress.due_date <= now:
-            due_cards.append(card)
+        due_cards.append(card)
     
     # Calculate batch totals
     batch_totals = {}

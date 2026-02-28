@@ -324,6 +324,8 @@ class Source(Base):
     logs: Mapped[List["SourceLog"]] = relationship(back_populates="source", cascade="all, delete-orphan")
     parent: Mapped[Optional["Source"]] = relationship("Source", remote_side=[id], back_populates="children", foreign_keys=[parent_source_id])
     children: Mapped[List["Source"]] = relationship("Source", back_populates="parent", foreign_keys="[Source.parent_source_id]")
+    source_edit: Mapped[Optional["SourceEdit"]] = relationship(back_populates="source", uselist=False)
+    share_links: Mapped[List["ShareLink"]] = relationship(back_populates="source", cascade="all, delete-orphan")
 
 
 class SourceLog(Base):
@@ -360,3 +362,69 @@ class SourceLog(Base):
 
     # Relationships
     source: Mapped["Source"] = relationship(back_populates="logs")
+
+
+class SourceEdit(Base):
+    """User-edited paper content stored as Tiptap ProseMirror JSON."""
+    __tablename__ = "source_edits"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    
+    content: Mapped[dict] = mapped_column(JSONB, default=dict)  # Tiptap ProseMirror JSON document
+    plain_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Plain text for search/preview
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint('source_id', 'user_id', name='uq_source_edit_source_user'),
+    )
+
+    # Relationships
+    source: Mapped["Source"] = relationship("Source", back_populates="source_edit")
+    user: Mapped["User"] = relationship("User")
+    annotations: Mapped[List["SourceAnnotation"]] = relationship(back_populates="source_edit", cascade="all, delete-orphan")
+
+
+class SourceAnnotation(Base):
+    """Annotations (highlights, comments) layered on top of edited content."""
+    __tablename__ = "source_annotations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_edit_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("source_edits.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    
+    type: Mapped[str] = mapped_column(String(30))  # 'highlight', 'comment'
+    color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # Highlight color
+    anchor: Mapped[dict] = mapped_column(JSONB, default=dict)  # {from, to} ProseMirror positions
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Comment content
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    source_edit: Mapped["SourceEdit"] = relationship(back_populates="annotations")
+    user: Mapped["User"] = relationship("User")
+
+
+class ShareLink(Base):
+    """Public sharing links for edited paper content."""
+    __tablename__ = "share_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    
+    token: Mapped[str] = mapped_column(String(32), unique=True, index=True)  # URL-safe token
+    include_annotations: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    source: Mapped["Source"] = relationship("Source", back_populates="share_links")
+    user: Mapped["User"] = relationship("User")

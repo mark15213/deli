@@ -20,16 +20,18 @@ interface NoteCardProps {
 }
 
 export function NoteCard({ title, content, images, source, onMarkRead, onClip }: NoteCardProps) {
+    const validImages = (images || []).filter((img) => typeof img === 'string' && img.length > 0)
     const [currentImageIndex, setCurrentImageIndex] = React.useState(0)
+    const activeIndex = currentImageIndex < validImages.length ? currentImageIndex : 0
 
     const nextImage = () => {
-        if (!images) return
-        setCurrentImageIndex((prev) => (prev + 1) % images.length)
+        if (validImages.length <= 1) return
+        setCurrentImageIndex((prev) => (prev + 1) % validImages.length)
     }
 
     const prevImage = () => {
-        if (!images) return
-        setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length)
+        if (validImages.length <= 1) return
+        setCurrentImageIndex((prev) => (prev - 1 + validImages.length) % validImages.length)
     }
 
     return (
@@ -56,14 +58,14 @@ export function NoteCard({ title, content, images, source, onMarkRead, onClip }:
                     )}
 
                     {/* Image Carousel */}
-                    {images && images.length > 0 && (
+                    {validImages.length > 0 && (
                         <div className="relative group w-full aspect-video bg-muted/30 rounded-xl border overflow-hidden">
                             <Dialog>
                                 <DialogTrigger asChild>
                                     <div className="w-full h-full cursor-zoom-in">
                                         <img
-                                            src={images[currentImageIndex].startsWith('http') ? images[currentImageIndex] : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${images[currentImageIndex]}`}
-                                            alt={`Figure ${currentImageIndex + 1}`}
+                                            src={validImages[activeIndex].startsWith('http') ? validImages[activeIndex] : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${validImages[activeIndex]}`}
+                                            alt={`Figure ${activeIndex + 1}`}
                                             className="w-full h-full object-contain p-2"
                                         />
                                     </div>
@@ -71,8 +73,8 @@ export function NoteCard({ title, content, images, source, onMarkRead, onClip }:
                                 <DialogContent className="max-w-7xl w-full p-1 bg-transparent border-none shadow-none sm:rounded-none">
                                     <div className="relative w-full h-full flex items-center justify-center">
                                         <img
-                                            src={images[currentImageIndex].startsWith('http') ? images[currentImageIndex] : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${images[currentImageIndex]}`}
-                                            alt={`Figure ${currentImageIndex + 1}`}
+                                            src={validImages[activeIndex].startsWith('http') ? validImages[activeIndex] : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}${validImages[activeIndex]}`}
+                                            alt={`Figure ${activeIndex + 1}`}
                                             className="max-h-[90vh] w-auto max-w-full rounded-lg shadow-2xl object-contain bg-background/95 backdrop-blur-sm"
                                         />
                                     </div>
@@ -80,7 +82,7 @@ export function NoteCard({ title, content, images, source, onMarkRead, onClip }:
                             </Dialog>
 
                             {/* Carousel Controls */}
-                            {images.length > 1 && (
+                            {validImages.length > 1 && (
                                 <>
                                     <button
                                         onClick={(e) => {
@@ -101,7 +103,7 @@ export function NoteCard({ title, content, images, source, onMarkRead, onClip }:
                                         <ChevronRight className="h-5 w-5" />
                                     </button>
                                     <div className="absolute bottom-2 right-2 bg-background/80 px-2 py-1 rounded text-xs font-medium">
-                                        {currentImageIndex + 1} / {images.length}
+                                        {activeIndex + 1} / {validImages.length}
                                     </div>
                                 </>
                             )}
