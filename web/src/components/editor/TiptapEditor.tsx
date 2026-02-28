@@ -8,6 +8,9 @@ import Placeholder from "@tiptap/extension-placeholder"
 import Underline from "@tiptap/extension-underline"
 import TextAlign from "@tiptap/extension-text-align"
 import Link from "@tiptap/extension-link"
+import MathExtension from "tiptap-math"
+import "katex/dist/katex.min.css"
+import "@benrbray/prosemirror-math/dist/prosemirror-math.css"
 import { useCallback, useEffect, useRef } from "react"
 import { EditorToolbar } from "./EditorToolbar"
 
@@ -47,9 +50,11 @@ export function TiptapEditor({ content, onUpdate, sourceId, editable = true }: T
                     rel: "noopener noreferrer",
                 },
             }),
+            MathExtension,
         ],
         content: content as any,
         editable,
+        immediatelyRender: false,
         editorProps: {
             attributes: {
                 class: "tiptap-editor-content",
