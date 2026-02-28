@@ -118,17 +118,19 @@ def _md_to_tiptap_nodes(markdown: str, images: Optional[List[str]] = None) -> li
 
 
 def _parse_inline(text: str) -> list:
-    """Parse inline markdown (bold, italic, code, links) into Tiptap marks."""
+    """Parse inline markdown (bold, italic, code, links, math) into Tiptap marks and inline nodes."""
     if not text:
         return [{"type": "text", "text": " "}]
 
     result = []
-    # Process inline patterns: **bold**, *italic*, `code`, [text](url)
+    # Process inline patterns: **bold**, *italic*, `code`, [text](url), $$blockmath$$, $inlinemath$
     pattern = re.compile(
         r'(\*\*(.+?)\*\*)'          # bold
         r'|(\*(.+?)\*)'             # italic
-        r'|(`(.+?)`)'              # inline code
-        r'|(\[(.+?)\]\((.+?)\))'   # link
+        r'|(`(.+?)`)'               # inline code
+        r'|(\[(.+?)\]\((.+?)\))'    # link
+        r'|(\$\$(.*?)\$\$)'         # block math (often appears inline in parsed strings)
+        r'|(\$(.*?)\$)'             # inline math
     )
 
     last_end = 0
@@ -160,6 +162,16 @@ def _parse_inline(text: str) -> list:
                 "type": "text",
                 "text": match.group(8),
                 "marks": [{"type": "link", "attrs": {"href": match.group(9), "target": "_blank"}}],
+            })
+        elif match.group(10):  # block math
+            result.append({
+                "type": "math_display",
+                "content": [{"type": "text", "text": match.group(11)}],
+            })
+        elif match.group(12):  # inline math
+            result.append({
+                "type": "math_inline",
+                "content": [{"type": "text", "text": match.group(13)}],
             })
 
         last_end = match.end()
