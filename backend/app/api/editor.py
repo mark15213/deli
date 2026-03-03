@@ -177,7 +177,16 @@ async def save_editor_content(
 
     await db.flush()
 
+    # Sync editor content back to reading note cards
+    from app.services.tiptap_converter import sync_tiptap_to_cards
+    try:
+        await sync_tiptap_to_cards(db, source_id, current_user.id, body.content)
+        await db.flush() # Ensure any newly created/archived cards are flushed
+    except Exception as e:
+        logger.error(f"Failed to sync tiptap to cards for source {source_id}: {e}")
+
     source_url = (source.connection_config or {}).get("url") if source.connection_config else None
+
 
     return EditorContentResponse(
         source_id=source_id,

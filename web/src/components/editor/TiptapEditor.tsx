@@ -17,6 +17,8 @@ import "katex/dist/katex.min.css"
 import "@benrbray/prosemirror-math/dist/prosemirror-math.css"
 import { useCallback, useEffect, useRef } from "react"
 import { EditorToolbar } from "./EditorToolbar"
+import { uploadEditorImage } from "@/lib/api/editor"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
 
 interface TiptapEditorProps {
     content: Record<string, unknown>
@@ -72,6 +74,51 @@ export function TiptapEditor({ content, onUpdate, sourceId, editable = true }: T
             attributes: {
                 class: "tiptap-editor-content",
             },
+            handlePaste: (view, event, slice) => {
+                if (!editable) return false
+                const items = Array.from(event.clipboardData?.items || [])
+                for (const item of items) {
+                    if (item.type.indexOf("image") === 0) {
+                        const file = item.getAsFile()
+                        if (file) {
+                            event.preventDefault()
+                            uploadEditorImage(sourceId, file).then((result) => {
+                                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"
+                                const fullUrl = result.url.startsWith("http") ? result.url : `${apiUrl}${result.url}`
+                                const { schema } = view.state
+                                const node = schema.nodes.image.create({ src: fullUrl })
+                                const transaction = view.state.tr.replaceSelectionWith(node)
+                                view.dispatch(transaction)
+                            }).catch(e => console.error("Failed to upload pasted image:", e))
+                            return true
+                        }
+                    }
+                }
+                return false
+            },
+            handleDrop: (view, event, slice, moved) => {
+                if (!editable || moved) return false
+                const items = Array.from(event.dataTransfer?.files || [])
+                for (const file of items) {
+                    if (file.type.indexOf("image") === 0) {
+                        event.preventDefault()
+                        uploadEditorImage(sourceId, file).then((result) => {
+                            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"
+                            const fullUrl = result.url.startsWith("http") ? result.url : `${apiUrl}${result.url}`
+                            const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY })
+                            const { schema } = view.state
+                            const node = schema.nodes.image.create({ src: fullUrl })
+
+                            if (coordinates) {
+                                const transaction = view.state.tr.insert(coordinates.pos, node)
+                                view.dispatch(transaction)
+                            }
+                        }).catch(e => console.error("Failed to upload dropped image:", e))
+                        return true
+                    }
+                }
+                return false
+            }
         },
         onUpdate: ({ editor }) => {
             if (!editable) return
