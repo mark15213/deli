@@ -354,9 +354,11 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
     # 2. Extract sections from Tiptap JSON
     # A section is defined by a Heading 2, and everything under it until the next H1/H2 (or horizontal rule)
     content_nodes = tiptap_json.get("content", [])
+    logger.info(f"sync_tiptap_to_cards: Parsing Tiptap JSON with {len(content_nodes)} nodes")
     
     sections = []
     current_section = None
+
     
     for node in content_nodes:
         if node.get("type") == "heading" and node.get("attrs", {}).get("level") == 2:
@@ -391,9 +393,12 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
     if current_section:
         sections.append(current_section)
         
+    logger.info(f"sync_tiptap_to_cards: Extracted {len(sections)} H2 sections")
+        
     if not sections:
         logger.warning(f"No H2 sections found in editor output for source {source_id}. Skipping sync.")
         return
+
 
     # Convert answer nodes back to pseudo-markdown or plain text for the 'answer' field
     # For now, we'll serialize the JSON back to a rudimentary text representation, or just store the json text.
@@ -419,9 +424,12 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
     batch_id = existing_cards[0].batch_id if existing_cards else None
     
     # 4. Map and update or insert/delete
+    logger.info(f"sync_tiptap_to_cards: Found {len(existing_cards)} existing cards")
     for idx, section in enumerate(sections):
         # Build markdown string from answer_nodes
         md_answer = json_to_markdown(section["answer_nodes"])
+        
+        logger.info(f"sync_tiptap_to_cards: Section {idx} - '{section['question']}' - has {len(section['images'])} images")
         
         new_content = {
             "question": section["question"],
@@ -429,6 +437,7 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
             "images": section["images"],
             "title": section["question"] # fallback
         }
+
         
         if idx < len(existing_cards):
             # Update existing card
@@ -440,8 +449,11 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
             
             # Reassign dictionary for SQLAlchemy JSONB mutation detection
             card.content = existing_content
+            db.add(card) # ensure it gets tracked
+            logger.info(f"sync_tiptap_to_cards: Updated existing card {card.id}")
         else:
             # Insert new card (user added a new H2 section in the editor)
+
             new_card = Card(
                 owner_id=user_id,
                 source_material_id=source_material.id,
