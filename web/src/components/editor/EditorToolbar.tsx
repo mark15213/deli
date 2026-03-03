@@ -8,8 +8,9 @@ import {
     AlignLeft, AlignCenter, AlignRight,
     Link, Unlink, Image as ImageIcon,
     Undo, Redo, Minus, Highlighter,
+    Table, Rows3, Columns3, Trash2,
 } from "lucide-react"
-import { useCallback, useRef } from "react"
+import { useCallback, useRef, useState } from "react"
 import { uploadEditorImage } from "@/lib/api/editor"
 import { cn } from "@/lib/utils"
 
@@ -167,6 +168,32 @@ export function EditorToolbar({ editor, sourceId }: EditorToolbarProps) {
                 <ToolbarButton onClick={() => editor.chain().focus().setTextAlign("right").run()} active={editor.isActive({ textAlign: "right" })} title="Align Right">
                     <AlignRight size={iconSize} />
                 </ToolbarButton>
+
+                <ToolbarDivider />
+
+                {/* Table */}
+                <ToolbarButton onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table">
+                    <Table size={iconSize} />
+                </ToolbarButton>
+                {editor.isActive("table") && (
+                    <>
+                        <ToolbarButton onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row">
+                            <Rows3 size={iconSize} />
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column">
+                            <Columns3 size={iconSize} />
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row">
+                            <span className="flex items-center gap-0.5"><Rows3 size={iconSize - 2} /><Trash2 size={iconSize - 4} /></span>
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column">
+                            <span className="flex items-center gap-0.5"><Columns3 size={iconSize - 2} /><Trash2 size={iconSize - 4} /></span>
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => editor.chain().focus().deleteTable().run()} title="Delete Table">
+                            <Trash2 size={iconSize} />
+                        </ToolbarButton>
+                    </>
+                )}
 
                 <ToolbarDivider />
 

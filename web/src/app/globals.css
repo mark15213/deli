@@ -365,6 +365,55 @@ body {
   border-radius: 0.15rem;
 }
 
+/* Table styles */
+.tiptap-editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  overflow: hidden;
+  table-layout: fixed;
+}
+
+.tiptap-editor-content table td,
+.tiptap-editor-content table th {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  position: relative;
+  min-width: 80px;
+}
+
+.tiptap-editor-content table th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-align: left;
+}
+
+.tiptap-editor-content table td>p,
+.tiptap-editor-content table th>p {
+  margin-bottom: 0;
+}
+
+.tiptap-editor-content table .selectedCell {
+  background: hsl(var(--primary) / 0.08);
+}
+
+.tiptap-editor-content table .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary) / 0.4);
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.tiptap-editor-content .tableWrapper {
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
 .tiptap-editor-content p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

@@ -8,7 +8,11 @@ import Placeholder from "@tiptap/extension-placeholder"
 import Underline from "@tiptap/extension-underline"
 import TextAlign from "@tiptap/extension-text-align"
 import Link from "@tiptap/extension-link"
-import MathExtension from "tiptap-math"
+import { Table } from "@tiptap/extension-table"
+import { TableRow } from "@tiptap/extension-table-row"
+import { TableCell } from "@tiptap/extension-table-cell"
+import { TableHeader } from "@tiptap/extension-table-header"
+import { MathInline, MathDisplay, MathExtension } from "./extensions/MathExtension"
 import "katex/dist/katex.min.css"
 import "@benrbray/prosemirror-math/dist/prosemirror-math.css"
 import { useCallback, useEffect, useRef } from "react"
@@ -50,6 +54,15 @@ export function TiptapEditor({ content, onUpdate, sourceId, editable = true }: T
                     rel: "noopener noreferrer",
                 },
             }),
+            Table.configure({
+                resizable: true,
+                HTMLAttributes: { class: "editor-table" },
+            }),
+            TableRow,
+            TableHeader,
+            TableCell,
+            MathInline,
+            MathDisplay,
             MathExtension,
         ],
         content: content as any,

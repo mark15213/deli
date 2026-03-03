@@ -81,6 +81,52 @@ def _md_to_tiptap_nodes(markdown: str, images: Optional[List[str]] = None) -> li
             })
             continue
 
+        # Table detection: | col1 | col2 | with |---|---| separator
+        if line.strip().startswith("|") and line.strip().endswith("|"):
+            # Collect all table lines
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|") and lines[i].strip().endswith("|"):
+                table_lines.append(lines[i])
+                i += 1
+
+            if len(table_lines) >= 2:
+                # Check for separator row (|---|---|)
+                sep_idx = None
+                for idx, tl in enumerate(table_lines):
+                    cells = [c.strip() for c in tl.strip().strip("|").split("|")]
+                    if all(re.match(r'^:?-{1,}:?$', c) for c in cells):
+                        sep_idx = idx
+                        break
+
+                table_rows = []
+                for idx, tl in enumerate(table_lines):
+                    if idx == sep_idx:
+                        continue  # Skip separator row
+                    cells = [c.strip() for c in tl.strip().strip("|").split("|")]
+                    # Rows before separator (or first row if no separator) are header rows
+                    is_header = sep_idx is not None and idx < sep_idx
+                    cell_type = "tableHeader" if is_header else "tableCell"
+                    row_cells = []
+                    for cell_text in cells:
+                        row_cells.append({
+                            "type": cell_type,
+                            "content": [{
+                                "type": "paragraph",
+                                "content": _parse_inline(cell_text),
+                            }],
+                        })
+                    table_rows.append({
+                        "type": "tableRow",
+                        "content": row_cells,
+                    })
+
+                if table_rows:
+                    nodes.append({
+                        "type": "table",
+                        "content": table_rows,
+                    })
+            continue
+
         # Blockquote (> text)
         if line.startswith("> "):
             quote_text = line[2:].strip()
@@ -118,17 +164,19 @@ def _md_to_tiptap_nodes(markdown: str, images: Optional[List[str]] = None) -> li
 
 
 def _parse_inline(text: str) -> list:
-    """Parse inline markdown (bold, italic, code, links) into Tiptap marks."""
+    """Parse inline markdown (bold, italic, code, links, math) into Tiptap marks and inline nodes."""
     if not text:
         return [{"type": "text", "text": " "}]
 
     result = []
-    # Process inline patterns: **bold**, *italic*, `code`, [text](url)
+    # Process inline patterns: **bold**, *italic*, `code`, [text](url), $$blockmath$$, $inlinemath$
     pattern = re.compile(
         r'(\*\*(.+?)\*\*)'          # bold
         r'|(\*(.+?)\*)'             # italic
-        r'|(`(.+?)`)'              # inline code
-        r'|(\[(.+?)\]\((.+?)\))'   # link
+        r'|(`(.+?)`)'               # inline code
+        r'|(\[(.+?)\]\((.+?)\))'    # link
+        r'|(\$\$(.*?)\$\$)'         # block math (often appears inline in parsed strings)
+        r'|(\$(.*?)\$)'             # inline math
     )
 
     last_end = 0
@@ -160,6 +208,16 @@ def _parse_inline(text: str) -> list:
                 "type": "text",
                 "text": match.group(8),
                 "marks": [{"type": "link", "attrs": {"href": match.group(9), "target": "_blank"}}],
+            })
+        elif match.group(10):  # block math
+            result.append({
+                "type": "math_display",
+                "content": [{"type": "text", "text": match.group(11)}],
+            })
+        elif match.group(12):  # inline math
+            result.append({
+                "type": "math_inline",
+                "content": [{"type": "text", "text": match.group(13)}],
             })
 
         last_end = match.end()
