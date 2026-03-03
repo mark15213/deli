@@ -1,7 +1,7 @@
 """add editor tables (source_edits, source_annotations, share_links)
 
 Revision ID: add_editor_tables
-Revises: clear_all_content
+Revises: dc9ebe2495ec
 Create Date: 2026-02-27
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_editor_tables'
-down_revision: Union[str, None] = 'clear_all_content'
+down_revision: Union[str, None] = 'dc9ebe2495ec'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
