@@ -10,7 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.models import Card, CardStatus, SourceMaterial, Source
+from app.models.models import Card, CardStatus, SourceMaterial, Source, SourceEdit
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 def _md_to_tiptap_nodes(markdown: str, images: Optional[List[str]] = None) -> list:
@@ -331,3 +334,191 @@ async def build_tiptap_document(
         "type": "doc",
         "content": doc_nodes,
     }
+
+
+
+async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID, tiptap_json: dict) -> None:
+    """
+    Reverse process: take edited Tiptap JSON, split by 'Heading 2' (sections), 
+    and update the corresponding `reading_note` cards for this source.
+    """
+    # 1. Find source_material linked to this source
+    sm_stmt = select(SourceMaterial).where(SourceMaterial.source_id == source_id)
+    sm_result = await db.execute(sm_stmt)
+    source_material = sm_result.scalar_one_or_none()
+    
+    if not source_material:
+        logger.warning(f"No source material found for source {source_id}, cannot sync cards.")
+        return
+        
+    # 2. Extract sections from Tiptap JSON
+    # A section is defined by a Heading 2, and everything under it until the next H1/H2 (or horizontal rule)
+    content_nodes = tiptap_json.get("content", [])
+    
+    sections = []
+    current_section = None
+    
+    for node in content_nodes:
+        if node.get("type") == "heading" and node.get("attrs", {}).get("level") == 2:
+            # Commit previous section
+            if current_section:
+                sections.append(current_section)
+                
+            # Start new section
+            # Extract text from heading node
+            heading_text = ""
+            for child in node.get("content", []):
+                if child.get("type") == "text":
+                    heading_text += child.get("text", "")
+                    
+            current_section = {
+                "question": heading_text,
+                "answer_nodes": [],
+                "images": []
+            }
+        elif node.get("type") == "horizontalRule" or (node.get("type") == "heading" and node.get("attrs", {}).get("level") == 1):
+            pass # Ignore H1 and HR for reading notes bodies
+        elif current_section is not None:
+            # It's part of the current section's body
+            if node.get("type") == "image":
+                src = node.get("attrs", {}).get("src")
+                if src:
+                    current_section["images"].append(src)
+            else:
+                current_section["answer_nodes"].append(node)
+                
+    # Don't forget the last section
+    if current_section:
+        sections.append(current_section)
+        
+    if not sections:
+        logger.warning(f"No H2 sections found in editor output for source {source_id}. Skipping sync.")
+        return
+
+    # Convert answer nodes back to pseudo-markdown or plain text for the 'answer' field
+    # For now, we'll serialize the JSON back to a rudimentary text representation, or just store the json text.
+    # The frontend Study page NoteCard expects markdown. Let's do a basic conversion.
+    from app.services.parsers.markdown_formatter import json_to_markdown
+    
+    # 3. Fetch existing `reading_note` cards
+    cards_stmt = (
+        select(Card)
+        .where(
+            Card.source_material_id == source_material.id,
+            Card.type == "reading_note",
+            Card.status.in_([CardStatus.ACTIVE, CardStatus.PENDING]),
+        )
+        .order_by(
+            Card.batch_index.asc().nullsfirst(),
+            Card.created_at.asc(),
+        )
+    )
+    cards_result = await db.execute(cards_stmt)
+    existing_cards = cards_result.scalars().all()
+    
+    batch_id = existing_cards[0].batch_id if existing_cards else None
+    
+    # 4. Map and update or insert/delete
+    for idx, section in enumerate(sections):
+        # Build markdown string from answer_nodes
+        md_answer = json_to_markdown(section["answer_nodes"])
+        
+        new_content = {
+            "question": section["question"],
+            "answer": md_answer,
+            "images": section["images"],
+            "title": section["question"] # fallback
+        }
+        
+        if idx < len(existing_cards):
+            # Update existing card
+            card = existing_cards[idx]
+            
+            # Merge content
+            existing_content = dict(card.content)
+            existing_content.update(new_content)
+            
+            # Reassign dictionary for SQLAlchemy JSONB mutation detection
+            card.content = existing_content
+        else:
+            # Insert new card (user added a new H2 section in the editor)
+            new_card = Card(
+                owner_id=user_id,
+                source_material_id=source_material.id,
+                type="reading_note",
+                content=new_content,
+                status=CardStatus.ACTIVE,
+                batch_id=batch_id,
+                batch_index=idx,
+                tags=["reading_note", "editor_added"]
+            )
+            db.add(new_card)
+            
+    # If there are fewer sections than cards (user deleted sections)
+    if len(sections) < len(existing_cards):
+        for idx in range(len(sections), len(existing_cards)):
+            card_to_archive = existing_cards[idx]
+            card_to_archive.status = CardStatus.ARCHIVED
+            
+
+def json_to_markdown(nodes: list) -> str:
+    """Basic helper to turn Tiptap nodes back into a readable markdown string for NoteCards."""
+    md = ""
+    for node in nodes:
+        node_type = node.get("type", "")
+        if node_type == "paragraph":
+            for child in node.get("content", []):
+                md += _mark_text(child)
+            md += "\n\n"
+        elif node_type == "heading":
+            level = node.get("attrs", {}).get("level", 1)
+            md += f"{'#' * level} "
+            for child in node.get("content", []):
+                md += _mark_text(child)
+            md += "\n\n"
+        elif node_type == "bulletList":
+            for item in node.get("content", []):
+                md += "- "
+                for p in item.get("content", []):
+                    for child in p.get("content", []):
+                        md += _mark_text(child)
+                md += "\n"
+            md += "\n"
+        elif node_type == "orderedList":
+            for i, item in enumerate(node.get("content", [])):
+                md += f"{i+1}. "
+                for p in item.get("content", []):
+                    for child in p.get("content", []):
+                        md += _mark_text(child)
+                md += "\n"
+            md += "\n"
+        elif node_type == "blockquote":
+            md += "> "
+            for p in node.get("content", []):
+                for child in p.get("content", []):
+                    md += _mark_text(child)
+            md += "\n\n"
+        elif node_type == "math_display":
+            for child in node.get("content", []):
+                md += f"$${child.get('text', '')}$$\n\n"
+        # Skipping tables for simple text sync, but they could be added
+    return md.strip()
+
+def _mark_text(child: dict) -> str:
+    text = child.get("text", "")
+    if not text and child.get("type") == "math_inline":
+        sub = child.get("content", [])
+        return f"${sub[0].get('text', '')}$" if sub else ""
+        
+    marks = child.get("marks", [])
+    for mark in marks:
+        if mark.get("type") == "bold":
+            text = f"**{text}**"
+        elif mark.get("type") == "italic":
+            text = f"*{text}*"
+        elif mark.get("type") == "code":
+            text = f"`{text}`"
+        elif mark.get("type") == "link":
+            href = mark.get("attrs", {}).get("href", "")
+            text = f"[{text}]({href})"
+    return text
