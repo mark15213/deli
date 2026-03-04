@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, Save, Loader2, MessageSquareDashed, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,10 @@ export default function EditorPage() {
     const [saved, setSaved] = useState(false)
     const [showAnnotations, setShowAnnotations] = useState(false)
 
+    // Save queue to prevent concurrent saves from overwriting each other
+    const savingRef = useRef(false)
+    const pendingSaveRef = useRef<{ json: Record<string, unknown>; text: string } | null>(null)
+
     // Fetch editor content
     useEffect(() => {
         async function load() {
@@ -40,18 +44,34 @@ export default function EditorPage() {
         load()
     }, [sourceId])
 
-    // Auto-save handler (called by TiptapEditor via debounce)
+    // Auto-save handler with queue to prevent concurrent overwrites
     const handleUpdate = useCallback(async (json: Record<string, unknown>, text: string) => {
+        // If a save is already in progress, queue this one (only keep latest)
+        if (savingRef.current) {
+            pendingSaveRef.current = { json, text }
+            return
+        }
+
+        savingRef.current = true
+        setSaving(true)
+        setSaved(false)
+
         try {
-            setSaving(true)
-            setSaved(false)
             await saveEditorContent(sourceId, json, text)
             setSaved(true)
             setTimeout(() => setSaved(false), 2000)
         } catch (e) {
             console.error("Failed to save:", e)
         } finally {
+            savingRef.current = false
             setSaving(false)
+
+            // Process queued save if any
+            const pending = pendingSaveRef.current
+            if (pending) {
+                pendingSaveRef.current = null
+                handleUpdate(pending.json, pending.text)
+            }
         }
     }, [sourceId])
 
