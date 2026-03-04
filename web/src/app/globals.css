@@ -452,15 +452,6 @@ body {
 }
 
 .shared-content-wrapper {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.75rem;
-  padding: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-
-@media (max-width: 768px) {
-  .shared-content-wrapper {
-    padding: 1rem;
-  }
+  max-width: 800px;
+  margin: 0 auto;
 }

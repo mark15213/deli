@@ -10,18 +10,19 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const { user, isLoading, isAuthenticated } = useAuth();
 
-    const isPublic = pathname === "/login" || pathname === "/register" || pathname.startsWith("/auth");
+    const isAuthPage = pathname === "/login" || pathname === "/register" || pathname.startsWith("/auth");
+    const isPublic = isAuthPage || pathname.startsWith("/shared");
     const isFullScreen = pathname.startsWith("/gulp");
 
     useEffect(() => {
         if (!isLoading) {
             if (!isAuthenticated && !isPublic) {
                 router.push("/login");
-            } else if (isAuthenticated && isPublic) {
+            } else if (isAuthenticated && isAuthPage) {
                 router.push("/");
             }
         }
-    }, [isLoading, isAuthenticated, isPublic, router]);
+    }, [isLoading, isAuthenticated, isPublic, isAuthPage, router]);
 
     if (isLoading) {
         return (
