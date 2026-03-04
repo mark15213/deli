@@ -472,6 +472,7 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
             card_to_archive = existing_cards[idx]
             card_to_archive.status = CardStatus.ARCHIVED
             
+    await db.commit()
 
 def json_to_markdown(nodes: list) -> str:
     """Basic helper to turn Tiptap nodes back into a readable markdown string for NoteCards."""
