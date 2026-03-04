@@ -181,9 +181,10 @@ async def save_editor_content(
     from app.services.tiptap_converter import sync_tiptap_to_cards
     try:
         await sync_tiptap_to_cards(db, source_id, current_user.id, body.content)
-        await db.flush() # Ensure any newly created/archived cards are flushed
+        await db.commit() # Commit all changes including editor content and synced cards
     except Exception as e:
         logger.error(f"Failed to sync tiptap to cards for source {source_id}: {e}")
+        await db.rollback() # Rollback on error
 
     source_url = (source.connection_config or {}).get("url") if source.connection_config else None
 
