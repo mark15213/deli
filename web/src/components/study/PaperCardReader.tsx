@@ -9,6 +9,7 @@ import { FlashcardView } from "./FlashcardView"
 import { QuizCard } from "./QuizCard"
 import { submitReview, skipBatch, type Rating } from "@/lib/api/study"
 import type { PaperStudyGroup, StudyCard } from "@/lib/api/study"
+import { ShareDialog } from "@/components/editor/ShareDialog"
 
 interface PaperCardReaderProps {
     paper: PaperStudyGroup
@@ -150,6 +151,7 @@ export function PaperCardReader({ paper, onBack, onComplete }: PaperCardReaderPr
                 </div>
 
                 <div className="flex items-center gap-1">
+                    <ShareDialog sourceId={paper.source_id} />
                     <Button
                         variant="ghost"
                         size="sm"

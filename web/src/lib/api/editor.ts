@@ -140,7 +140,10 @@ export async function createShareLink(sourceId: string): Promise<ShareLink> {
         method: "POST",
     });
     if (!res.ok) throw new Error("Failed to create share link");
-    return res.json();
+    const data: ShareLink = await res.json();
+    // Construct URL on the client so it works in any environment
+    data.url = `${window.location.origin}/shared/${data.token}`;
+    return data;
 }
 
 export async function revokeShareLink(sourceId: string): Promise<void> {
