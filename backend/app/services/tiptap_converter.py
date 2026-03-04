@@ -360,6 +360,17 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
     current_section = None
 
     
+    def _extract_images_from_node(node: dict) -> list:
+        """Recursively find all image src URLs within a node tree."""
+        imgs = []
+        if node.get("type") == "image":
+            src = node.get("attrs", {}).get("src")
+            if src:
+                imgs.append(src)
+        for child in node.get("content", []):
+            imgs.extend(_extract_images_from_node(child))
+        return imgs
+
     for node in content_nodes:
         if node.get("type") == "heading" and node.get("attrs", {}).get("level") == 2:
             # Commit previous section
@@ -382,11 +393,14 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
             pass # Ignore H1 and HR for reading notes bodies
         elif current_section is not None:
             # It's part of the current section's body
-            if node.get("type") == "image":
-                src = node.get("attrs", {}).get("src")
-                if src:
-                    current_section["images"].append(src)
-            else:
+            # Extract images from this node (including nested ones)
+            found_images = _extract_images_from_node(node)
+            if found_images:
+                current_section["images"].extend(found_images)
+                logger.info(f"sync_tiptap_to_cards: Found {len(found_images)} image(s) in node type={node.get('type')}")
+            
+            # Also keep the node as an answer node (unless it's purely an image)
+            if node.get("type") != "image":
                 current_section["answer_nodes"].append(node)
                 
     # Don't forget the last section
