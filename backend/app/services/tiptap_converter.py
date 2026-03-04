@@ -403,7 +403,7 @@ async def sync_tiptap_to_cards(db: AsyncSession, source_id: UUID, user_id: UUID,
     # Convert answer nodes back to pseudo-markdown or plain text for the 'answer' field
     # For now, we'll serialize the JSON back to a rudimentary text representation, or just store the json text.
     # The frontend Study page NoteCard expects markdown. Let's do a basic conversion.
-    from app.services.parsers.markdown_formatter import json_to_markdown
+    
     
     # 3. Fetch existing `reading_note` cards
     cards_stmt = (
