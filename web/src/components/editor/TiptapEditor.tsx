@@ -135,9 +135,10 @@ export function TiptapEditor({ content, onUpdate, sourceId, editable = true }: T
     // Update content when prop changes (initial load)
     useEffect(() => {
         if (editor && content && !editor.isDestroyed) {
-            const currentJSON = JSON.stringify(editor.getJSON())
-            const newJSON = JSON.stringify(content)
-            if (currentJSON !== newJSON) {
+            // Only set content if the editor is completely empty (initial load)
+            // or if we're explicitly forcing a reset.
+            // Continuously calling setContent breaks the cursor position and causes infinite update loops.
+            if (editor.isEmpty) {
                 editor.commands.setContent(content as any)
             }
         }
