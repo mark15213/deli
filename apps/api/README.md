@@ -69,43 +69,46 @@ API 文档将在 http://localhost:8000/docs 可用。
 - `POST /api/v1/auth/refresh` - 刷新 token
 - `GET /api/v1/auth/me` - 获取当前用户信息
 
-### 订阅源 (待实现)
+### 订阅源
 
 - `GET /api/v1/subscriptions` - 获取所有订阅源
 - `POST /api/v1/subscriptions` - 创建订阅源
 - `GET /api/v1/subscriptions/:id` - 获取单个订阅源
 - `PATCH /api/v1/subscriptions/:id` - 更新订阅源
 - `DELETE /api/v1/subscriptions/:id` - 删除订阅源
+- `POST /api/v1/subscriptions/:id/fetch` - 手动触发抓取
 
-### 快照 (待实现)
+### 快照
 
-- `GET /api/v1/snapshots` - 获取所有快照
+- `GET /api/v1/snapshots` - 获取所有快照 (支持分页和筛选)
 - `POST /api/v1/snapshots` - 创建快照
 - `GET /api/v1/snapshots/:id` - 获取单个快照
 - `PATCH /api/v1/snapshots/:id` - 更新快照
 - `DELETE /api/v1/snapshots/:id` - 删除快照
+- `POST /api/v1/snapshots/:id/generate` - 生成知识卡片
 
-### 知识库 (待实现)
+### 知识库
 
 - `GET /api/v1/knowledge-bases` - 获取所有知识库
 - `POST /api/v1/knowledge-bases` - 创建知识库
 - `GET /api/v1/knowledge-bases/:id` - 获取知识库详情
 - `PATCH /api/v1/knowledge-bases/:id` - 更新知识库
 - `DELETE /api/v1/knowledge-bases/:id` - 删除知识库
+- `GET /api/v1/knowledge-bases/:id/cards` - 获取知识库的所有卡片
 
-### 知识卡片 (待实现)
+### 知识卡片
 
-- `GET /api/v1/cards` - 获取所有卡片
+- `GET /api/v1/cards` - 获取所有卡片 (支持按知识库筛选)
 - `POST /api/v1/cards` - 创建卡片
 - `GET /api/v1/cards/:id` - 获取单个卡片
 - `PATCH /api/v1/cards/:id` - 更新卡片
 - `DELETE /api/v1/cards/:id` - 删除卡片
 - `POST /api/v1/cards/:id/review` - 提交复习结果
 
-### Gulp (待实现)
+### Gulp
 
-- `GET /api/v1/gulp/stream` - 获取信息流
-- `GET /api/v1/gulp/quiz` - 获取测验卡片
+- `GET /api/v1/gulp/stream` - 获取信息流 (已处理的快照)
+- `GET /api/v1/gulp/quiz` - 获取测验卡片 (基于权重算法)
 - `POST /api/v1/gulp/quiz/:id/submit` - 提交测验答案
 
 ## 测试
@@ -152,9 +155,11 @@ apps/api/
 - [x] 数据模型实现
 - [x] Pydantic Schemas
 - [x] 认证 API
-- [ ] 订阅源 API
-- [ ] 快照 API
-- [ ] 知识库 API
-- [ ] 知识卡片 API
-- [ ] Gulp API
-- [ ] 媒体上传 API
+- [x] 订阅源 API
+- [x] 快照 API
+- [x] 知识库 API
+- [x] 知识卡片 API
+- [x] Gulp API
+- [ ] 媒体上传 API (待实现)
+- [ ] AI 集成 (待实现)
+- [ ] 任务队列 (待实现)
