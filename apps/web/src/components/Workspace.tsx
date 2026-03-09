@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft, Zap, FileText, Sparkles, Edit3, Trash2, Send, Plus, ChevronDown, CheckCircle2, Database } from "lucide-react"
+import { ArrowLeft, Zap, FileText, Sparkles, Edit3, Trash2, Send, Plus, ChevronDown, CheckCircle2, Database, Download } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -161,8 +161,12 @@ export function Workspace({ source, onClose }: WorkspaceProps) {
 
                         {/* Pipeline / Studio Top Half */}
                         <div className="p-4 border-b border-zinc-100 bg-white shrink-0">
-                            <div className="flex items-center gap-2 mb-4 px-2">
+                            <div className="flex items-center justify-between mb-4 px-2">
                                 <h3 className="font-semibold text-sm text-zinc-800">Studio</h3>
+                                <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 gap-1.5 rounded-full text-zinc-600 hover:text-zinc-900 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 cursor-pointer shadow-sm">
+                                    <Download className="h-3.5 w-3.5" />
+                                    Import Cards
+                                </Button>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3 mb-4">
