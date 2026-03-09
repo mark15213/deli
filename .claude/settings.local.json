@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:lilianweng.github.io)",
+      "Bash(git config:*)",
+      "Bash(alembic init:*)"
+    ]
+  }
+}
