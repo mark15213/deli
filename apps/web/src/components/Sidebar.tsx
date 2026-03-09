@@ -1,12 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Layers, Library, Zap, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { Layers, Library, Zap, Settings, PanelLeftClose, PanelLeftOpen, LogOut, User } from "lucide-react"
 import Image from "next/image"
 import { useState } from "react"
 
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/AuthContext"
 
 const navigation = [
     { name: "Feed", href: "/feed", icon: Layers },
@@ -16,7 +17,19 @@ const navigation = [
 
 export function Sidebar() {
     const pathname = usePathname()
+    const router = useRouter()
     const [isCollapsed, setIsCollapsed] = useState(false)
+    const { user, logout, isAuthenticated } = useAuth()
+
+    const handleLogout = () => {
+        logout()
+        router.push('/login')
+    }
+
+    // Don't show sidebar on login page
+    if (pathname === '/login') {
+        return null
+    }
 
     return (
         <div className={cn(
@@ -74,7 +87,49 @@ export function Sidebar() {
                 })}
             </nav>
 
-            <div className="mt-auto w-full">
+            <div className="mt-auto w-full space-y-2">
+                {isAuthenticated && user && (
+                    <div className={cn(
+                        "flex items-center rounded-md text-sm bg-zinc-100 border border-zinc-200",
+                        isCollapsed ? "justify-center p-3" : "gap-3 px-3 py-2"
+                    )}>
+                        <User className={cn(isCollapsed ? "h-5 w-5" : "h-4 w-4", "text-zinc-600")} />
+                        {!isCollapsed && (
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-zinc-900 truncate">
+                                    {user.username || user.email}
+                                </p>
+                                <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {isAuthenticated ? (
+                    <button
+                        onClick={handleLogout}
+                        title={isCollapsed ? "Logout" : undefined}
+                        className={cn(
+                            "flex w-full items-center rounded-md text-sm font-medium text-zinc-500 transition-colors hover:bg-red-50 hover:text-red-600 cursor-pointer",
+                            isCollapsed ? "justify-center p-3" : "gap-3 px-3 py-2"
+                        )}
+                    >
+                        <LogOut className={cn(isCollapsed ? "h-5 w-5" : "h-4 w-4")} />
+                        {!isCollapsed && <span>Logout</span>}
+                    </button>
+                ) : (
+                    <Link
+                        href="/login"
+                        className={cn(
+                            "flex w-full items-center rounded-md text-sm font-medium text-zinc-500 transition-colors hover:bg-white/60 hover:text-zinc-900 cursor-pointer",
+                            isCollapsed ? "justify-center p-3" : "gap-3 px-3 py-2"
+                        )}
+                    >
+                        <User className={cn(isCollapsed ? "h-5 w-5" : "h-4 w-4")} />
+                        {!isCollapsed && <span>Login</span>}
+                    </Link>
+                )}
+
                 <button
                     title={isCollapsed ? "Settings" : undefined}
                     className={cn(
