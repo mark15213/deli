@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft, Zap, FileText, Sparkles, Edit3, Trash2, Send, Plus, ChevronDown, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, Zap, FileText, Sparkles, Edit3, Trash2, Send, Plus, ChevronDown, CheckCircle2, Database } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -19,6 +19,7 @@ export function Workspace({ source, onClose }: WorkspaceProps) {
     const [cardsGenerated, setCardsGenerated] = useState(0)
     const [isEditing, setIsEditing] = useState(false)
     const [isStudioOpen, setIsStudioOpen] = useState(true)
+    const [targetKB, setTargetKB] = useState("AI Architecture")
 
     // Mock generated cards state
     const [cards, setCards] = useState<number[]>([])
@@ -40,15 +41,22 @@ export function Workspace({ source, onClose }: WorkspaceProps) {
         <div className="h-full flex flex-col bg-zinc-100 relative z-10 overflow-hidden text-zinc-900 font-sans p-4 gap-4">
 
             {/* Top Global Navigation bar (Optional but keeps it grounded) */}
-            <div className="flex items-center justify-between px-2 bg-transparent shrink-0 border-b-0">
+            <div className="flex items-center justify-between px-2 bg-transparent shrink-0 border-b-0 relative">
                 <Button variant="ghost" size="sm" onClick={onClose} className="rounded-full hover:bg-zinc-200/50 text-zinc-600 gap-2 h-8 px-3 cursor-pointer">
                     <ArrowLeft className="h-4 w-4" />
                     Back to Feed
                 </Button>
+
+                {/* Target KB Selector in Header */}
+                <div className="flex items-center justify-center absolute left-1/2 -translate-x-1/2">
+                    <Button variant="ghost" size="sm" className="rounded-full h-8 px-4 bg-zinc-200/50 text-zinc-700 hover:bg-zinc-200 gap-2 text-xs font-semibold shadow-[0_1px_2px_0_rgba(0,0,0,0.02)] cursor-pointer">
+                        <Database className="h-3.5 w-3.5 text-blue-500" />
+                        Target: {targetKB}
+                        <ChevronDown className="h-3 w-3 text-zinc-400" />
+                    </Button>
+                </div>
+
                 <div className="flex items-center gap-2">
-                    <div className="text-sm font-medium text-zinc-500 mr-4">
-                        Gulp Workspace
-                    </div>
                     <Button
                         variant="outline"
                         size="sm"
