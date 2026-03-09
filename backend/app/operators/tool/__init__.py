@@ -1,1 +1,0 @@
-"""Tool operator sub-package."""
