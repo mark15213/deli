@@ -1,62 +1,81 @@
-# Dependencies
+# Node
 node_modules/
-__pycache__/
-*.pyc
-.venv/
-venv/
-*.egg-info/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+.pnpm-store/
 
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Build outputs
+# Next.js
 .next/
 out/
-dist/
 build/
-*.egg
-*.whl
+.swc/
 
-# IDE
-.idea/
+# Expo / React Native
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+buck-out/
+.metro-health-check*
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# macOS / OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# IDEs / Editors
 .vscode/
+.idea/
 *.swp
 *.swo
-.DS_Store
 
-# Logs
-*.log
-backend/logs/
-npm-debug.log*
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-
-# iOS
-*.xcuserstate
-xcuserdata/
-DerivedData/
-*.ipa
-*.dSYM.zip
-*.dSYM
-
-# Database
-*.db
-*.sqlite
-
-# Secrets
-*.pem
-*.key
-mem.md
-# Generated Content
-backend/app/static/
-backend/data/*
-!backend/data/.gitkeep
-venc_data_dump*
-
-# API Client
-bruno/
+# Turborepo
+.turbo/
